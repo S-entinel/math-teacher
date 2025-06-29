@@ -1,0 +1,347 @@
+/* Graph Container */
+.graph-container {
+    margin: 24px 0;
+    padding: 24px;
+    border: 1px solid var(--border-bright);
+    background: var(--card-bg);
+    position: relative;
+    box-shadow: 0 4px 20px var(--shadow);
+    backdrop-filter: blur(20px);
+    border-left: 3px solid var(--accent);
+}
+
+.graph-container::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    border: 1px solid var(--accent);
+    pointer-events: none;
+    opacity: 0.3;
+    background: linear-gradient(45deg, transparent, var(--glow), transparent);
+}
+
+.graph-container::after {
+    content: 'GRAPH OUTPUT';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--accent);
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border: 1px solid var(--accent);
+}
+
+.graph-container .js-plotly-plot {
+    background: transparent !important;
+}
+
+.graph-container .plotly .modebar {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
+}
+
+.graph-container .plotly .modebar-btn {
+    background: var(--bg-secondary) !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text-secondary) !important;
+}
+
+.graph-container .plotly .modebar-btn:hover {
+    background: var(--accent) !important;
+    color: var(--bg-primary) !important;
+    box-shadow: 0 0 10px var(--glow) !important;
+}
+
+/* Practice Problems */
+.practice-container {
+    margin: 20px 0;
+    padding: 24px;
+    border: 1px solid var(--border-bright);
+    background: var(--card-bg);
+    position: relative;
+    box-shadow: 0 4px 20px var(--shadow);
+    backdrop-filter: blur(20px);
+    border-left: 3px solid var(--warning);
+}
+
+.practice-container::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    right: -1px;
+    bottom: -1px;
+    border: 1px solid var(--warning);
+    z-index: -1;
+    opacity: 0.3;
+    background: linear-gradient(45deg, var(--warning), transparent, var(--warning), transparent);
+    animation: practiceShimmer 4s linear infinite;
+}
+
+.practice-container::after {
+    content: 'PRACTICE MODULE';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--warning);
+    font-weight: 500;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border: 1px solid var(--warning);
+}
+
+@keyframes practiceShimmer {
+    0% { background-position: 0% 0%; }
+    100% { background-position: 100% 100%; }
+}
+
+.practice-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    font-weight: 500;
+    padding-top: 20px;
+}
+
+.practice-difficulty {
+    color: var(--warning);
+    font-weight: 600;
+    padding: 2px 8px;
+    border: 1px solid var(--warning);
+    background: rgba(237, 137, 54, 0.1);
+}
+
+.practice-problem {
+    font-size: 14px;
+    color: var(--text-primary);
+    line-height: 1.7;
+    margin-bottom: 20px;
+    font-family: 'Inter', sans-serif;
+    font-weight: 400;
+}
+
+.practice-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.practice-btn {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    color: var(--text-secondary);
+    padding: 12px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    font-weight: 500;
+}
+
+.practice-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    transition: left 0.4s ease;
+    opacity: 0.1;
+}
+
+.practice-btn:hover::before {
+    left: 100%;
+}
+
+.practice-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(79, 195, 247, 0.05);
+    box-shadow: 0 0 15px var(--glow);
+}
+
+/* Math Rendering */
+.MathJax {
+    color: var(--text-primary) !important;
+    font-size: 1.1em !important;
+}
+
+.MathJax_Display {
+    margin: 1.5em 0 !important;
+    text-align: left !important;
+}
+
+.message-assistant .content .MathJax {
+    color: var(--accent-bright) !important;
+}
+
+.content mjx-container {
+    margin: 0.4em 0;
+    display: inline-block;
+}
+
+.content mjx-container[display="true"] {
+    margin: 1.5em 0;
+    display: block;
+    text-align: left;
+}
+
+mjx-math {
+    font-family: 'JetBrains Mono', 'Computer Modern', serif !important;
+    color: var(--accent-bright) !important;
+}
+
+/* Enhanced Graph Styling for Dark Mode */
+[data-theme="dark"] .graph-container {
+    background: var(--bg-secondary);
+    border-color: var(--border-bright);
+}
+
+[data-theme="dark"] .graph-container::before {
+    background: linear-gradient(45deg, transparent, var(--glow), transparent);
+    border-color: var(--accent);
+}
+
+/* Loading and Streaming States */
+.streaming-cursor {
+    animation: streamingBlink 1.2s infinite ease-in-out;
+    color: var(--accent);
+    font-weight: 400;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+@keyframes streamingBlink {
+    0%, 45% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+}
+
+/* Enhanced Practice Problem Animations */
+.practice-container {
+    animation: slideInFromBottom 0.5s ease-out;
+}
+
+@keyframes slideInFromBottom {
+    0% {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Graph Animation */
+.graph-container {
+    animation: fadeInScale 0.6s ease-out;
+}
+
+@keyframes fadeInScale {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+/* Enhanced Math Rendering for Better Readability */
+.content mjx-container[display="true"] mjx-math {
+    padding: 12px 16px;
+    background: rgba(79, 195, 247, 0.05);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    backdrop-filter: blur(10px);
+}
+
+[data-theme="light"] .content mjx-container[display="true"] mjx-math {
+    background: rgba(14, 165, 233, 0.05);
+}
+
+/* Responsive Adjustments for Components */
+@media (max-width: 768px) {
+    .graph-container {
+        padding: 16px;
+        margin: 16px 0;
+    }
+    
+    .practice-container {
+        padding: 16px;
+        margin: 16px 0;
+    }
+    
+    .practice-header {
+        font-size: 9px;
+        margin-bottom: 12px;
+        padding-top: 16px;
+    }
+    
+    .practice-problem {
+        font-size: 13px;
+        margin-bottom: 16px;
+    }
+    
+    .practice-btn {
+        font-size: 9px;
+        padding: 10px 12px;
+    }
+    
+    .graph-container::after,
+    .practice-container::after {
+        font-size: 8px;
+        padding: 3px 6px;
+    }
+}
+
+@media (max-width: 480px) {
+    .graph-container {
+        padding: 12px;
+        margin: 12px 0;
+    }
+    
+    .practice-container {
+        padding: 12px;
+        margin: 12px 0;
+    }
+    
+    .practice-problem {
+        font-size: 12px;
+        margin-bottom: 14px;
+    }
+    
+    .practice-btn {
+        font-size: 8px;
+        padding: 8px 10px;
+    }
+    
+    .graph-container::after,
+    .practice-container::after {
+        font-size: 7px;
+        padding: 2px 4px;
+    }
+}
