@@ -3,6 +3,7 @@ class EnhancedMathInterface {
         this.apiUrl = 'http://localhost:8000';
         this.sessionId = null;
         this.isLoading = false;
+        this.sessionReady = false;
         
         this.conversationArea = document.getElementById('conversation');
         this.messageInput = document.getElementById('message-input');
@@ -10,6 +11,121 @@ class EnhancedMathInterface {
         this.sessionDisplay = document.getElementById('session-display');
         
         this.initializeEventListeners();
+        this.initializeSession();
+    }
+    
+    async initializeSession() {
+        try {
+            updateConnectionStatus('connecting');
+            
+            // Check if we have a stored session ID
+            const storedSessionId = loadFromLocalStorage('current_session_id', null);
+            
+            if (storedSessionId) {
+                // Verify stored session exists and ensure it's created on backend
+                const sessionStatus = await this.getSessionStatus(storedSessionId);
+                
+                if (!sessionStatus.exists) {
+                    // Session doesn't exist on backend, ensure it exists
+                    await this.ensureSession(storedSessionId);
+                }
+                
+                this.sessionId = storedSessionId;
+                this.updateSessionDisplay(storedSessionId);
+                console.log(`✓ Restored session: ${storedSessionId.slice(0, 8)}`);
+            } else {
+                // Create new session
+                const response = await fetch(`${this.apiUrl}/sessions/new`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to create session: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                this.sessionId = data.session_id;
+                
+                // Store session ID for persistence
+                saveToLocalStorage('current_session_id', this.sessionId);
+                this.updateSessionDisplay(this.sessionId);
+                console.log(`✓ Created new session: ${this.sessionId.slice(0, 8)}`);
+            }
+            
+            this.sessionReady = true;
+            updateConnectionStatus('connected');
+            this.enableUI();
+            
+        } catch (error) {
+            console.error('Failed to initialize session:', error);
+            updateConnectionStatus('error');
+            showNotification('Failed to initialize session', 'error');
+            
+            // Fallback: still enable UI but warn user
+            this.enableUI();
+        }
+    }
+    
+    async getSessionStatus(sessionId) {
+        try {
+            const response = await fetch(`${this.apiUrl}/sessions/${sessionId}/status`);
+            if (!response.ok) {
+                throw new Error(`Session status check failed: ${response.statusText}`);
+            }
+            return await response.json();
+        } catch (error) {
+            console.error('Failed to get session status:', error);
+            return { exists: false };
+        }
+    }
+    
+    async ensureSession(sessionId) {
+        try {
+            const response = await fetch(`${this.apiUrl}/sessions/${sessionId}/ensure`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Failed to ensure session: ${response.statusText}`);
+            }
+            
+            const data = await response.json();
+            console.log(`✓ Ensured session exists: ${data.session_id.slice(0, 8)}`);
+            return data;
+        } catch (error) {
+            console.error('Failed to ensure session:', error);
+            throw error;
+        }
+    }
+    
+    enableUI() {
+        // Enable buttons that require session
+        const clearButton = document.getElementById('clear-conversation');
+        if (clearButton) {
+            clearButton.disabled = false;
+        }
+        
+        // Enable send functionality
+        this.sendButton.disabled = false;
+        this.messageInput.disabled = false;
+        
+        // Update UI state
+        this.messageInput.placeholder = "enter mathematical query...";
+    }
+    
+    updateSessionDisplay(sessionId) {
+        if (this.sessionDisplay && sessionId) {
+            this.sessionDisplay.innerHTML = `
+                <div class="session-id">${sessionId.slice(0, 8).toUpperCase()}</div>
+                <div class="session-time">ready</div>
+            `;
+        }
     }
     
     initializeEventListeners() {
@@ -32,6 +148,12 @@ class EnhancedMathInterface {
     async sendMessage() {
         const message = this.messageInput.value.trim();
         if (!message || this.isLoading) return;
+        
+        // Ensure session is ready
+        if (!this.sessionReady || !this.sessionId) {
+            showNotification('Session not ready, please wait...', 'warning');
+            return;
+        }
         
         // Add to message history
         addToMessageHistory(message);
@@ -77,10 +199,11 @@ class EnhancedMathInterface {
             
             const data = await response.json();
             
-            // Update session ID if new
+            // Update session ID if changed (shouldn't happen with proper session management)
             if (data.session_id && data.session_id !== this.sessionId) {
                 this.sessionId = data.session_id;
-                this.sessionDisplay.textContent = this.sessionId.slice(0, 8).toUpperCase();
+                saveToLocalStorage('current_session_id', this.sessionId);
+                this.updateSessionDisplay(this.sessionId);
                 updateSessionTimestamp(new Date());
             }
             
@@ -122,6 +245,60 @@ class EnhancedMathInterface {
                 updateConnectionStatus('connected');
             }, 2000);
         }
+    }
+    
+    async clearConversation() {
+        if (!this.sessionId) {
+            showNotification('No active session to clear', 'warning');
+            return false;
+        }
+        
+        try {
+            const response = await fetch(`${this.apiUrl}/sessions/${this.sessionId}/clear`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (!response.ok) {
+                // Log the error but don't fail - backend might handle this gracefully
+                console.warn(`Clear session returned ${response.status}, but continuing...`);
+            }
+            
+            // Clear frontend conversation regardless of backend response
+            this.resetConversationUI();
+            showNotification('Conversation cleared', 'success');
+            return true;
+            
+        } catch (error) {
+            console.error('Error clearing conversation:', error);
+            
+            // Still clear frontend even if backend fails
+            this.resetConversationUI();
+            showNotification('Conversation cleared locally', 'warning');
+            return false;
+        }
+    }
+    
+    resetConversationUI() {
+        if (this.conversationArea) {
+            this.conversationArea.innerHTML = `
+                <div class="message-group">
+                    <div class="message message-assistant">
+                        <div class="content">
+                            Right, I'm your AI math teacher. Ask me whatever mathematical questions you have - I'll give you clear, direct explanations. Try to keep up.
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Clear stored conversation but keep session
+        clearStoredConversation();
+        
+        // Reset session timestamp but keep the session ID
+        updateSessionTimestamp();
     }
     
     addMessageGroup(messages) {
@@ -238,7 +415,7 @@ class EnhancedMathInterface {
     
     setLoadingState(loading) {
         this.isLoading = loading;
-        this.sendButton.disabled = loading;
-        this.sendButton.innerHTML = loading ? '<span class="loading-dots">processing</span>' : 'send';
+        this.sendButton.disabled = loading || !this.sessionReady;
+        this.sendButton.innerHTML = loading ? '<span class="loading-dots">processing</span>' : 'execute';
     }
 }

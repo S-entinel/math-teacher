@@ -54,6 +54,8 @@ function loadConversationFromStorage() {
         // Restore session ID if available
         if (window.mathInterface && conversationData.sessionId) {
             window.mathInterface.sessionId = conversationData.sessionId;
+            // Also save it as current session
+            saveToLocalStorage('current_session_id', conversationData.sessionId);
             updateSessionDisplay(conversationData.sessionId);
         }
         
@@ -99,18 +101,35 @@ function addMessageToUI(role, content) {
 function updateSessionDisplay(sessionId) {
     const sessionDisplay = document.getElementById('session-display');
     if (sessionDisplay && sessionId) {
-        sessionDisplay.textContent = sessionId.slice(0, 8).toUpperCase();
+        sessionDisplay.innerHTML = `
+            <div class="session-id">${sessionId.slice(0, 8).toUpperCase()}</div>
+            <div class="session-time">restored</div>
+        `;
     }
 }
 
 function clearStoredConversation() {
     try {
         localStorage.removeItem('math_conversation');
-        localStorage.removeItem('session_start_time');
+        // Don't clear session_start_time or current_session_id here
+        // Those should persist across conversation clears
         console.log('✓ Stored conversation cleared');
         return true;
     } catch (error) {
         console.error('Failed to clear stored conversation:', error);
+        return false;
+    }
+}
+
+function clearAllStoredData() {
+    try {
+        localStorage.removeItem('math_conversation');
+        localStorage.removeItem('session_start_time');
+        localStorage.removeItem('current_session_id');
+        console.log('✓ All stored data cleared');
+        return true;
+    } catch (error) {
+        console.error('Failed to clear all stored data:', error);
         return false;
     }
 }
@@ -288,6 +307,64 @@ function initializeSessionTimestamp() {
     
     // Update every minute
     setInterval(updateSessionDisplayWithTime, 60000);
+}
+
+// Conversation management
+function copyConversation() {
+    const messages = document.querySelectorAll('.message');
+    let conversationText = 'Mathematical Conversation\n\n';
+    
+    messages.forEach(message => {
+        const isUser = message.classList.contains('message-user');
+        const content = message.querySelector('.content');
+        if (content) {
+            const role = isUser ? 'Student' : 'Teacher';
+            const text = content.textContent.trim();
+            conversationText += `${role}: ${text}\n\n`;
+        }
+    });
+    
+    copyToClipboard(conversationText).then(success => {
+        if (success) {
+            showNotification('Conversation copied to clipboard', 'success');
+        } else {
+            showNotification('Failed to copy conversation', 'error');
+        }
+    });
+}
+
+function clearConversation() {
+    if (confirm('Clear this conversation? This action cannot be undone.')) {
+        if (window.mathInterface && typeof window.mathInterface.clearConversation === 'function') {
+            // Use the enhanced interface method
+            window.mathInterface.clearConversation();
+        } else {
+            // Fallback to manual clearing
+            resetConversationUI();
+            showNotification('Conversation cleared', 'success');
+        }
+    }
+}
+
+function resetConversationUI() {
+    const conversationArea = document.getElementById('conversation');
+    if (conversationArea) {
+        conversationArea.innerHTML = `
+            <div class="message-group">
+                <div class="message message-assistant">
+                    <div class="content">
+                        Right, I'm your AI math teacher. Ask me whatever mathematical questions you have - I'll give you clear, direct explanations. Try to keep up.
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Clear stored conversation but keep session info
+    clearStoredConversation();
+    
+    // Reset session timestamp
+    updateSessionTimestamp();
 }
 
 // Button Feedback Functions
@@ -549,7 +626,7 @@ function addToMessageHistory(message) {
     }
 }
 
-// Better Error Messages
+//Error Messages
 function getErrorMessage(error, context = '') {
     const errorMsg = error.message || error.toString();
     
@@ -586,83 +663,6 @@ function getErrorMessage(error, context = '') {
     
     // Generic fallback
     return "Something went wrong. Try your question again.";
-}
-
-// Conversation management
-function copyConversation() {
-    const messages = document.querySelectorAll('.message');
-    let conversationText = 'Mathematical Conversation\n\n';
-    
-    messages.forEach(message => {
-        const isUser = message.classList.contains('message-user');
-        const content = message.querySelector('.content');
-        if (content) {
-            const role = isUser ? 'Student' : 'Teacher';
-            const text = content.textContent.trim();
-            conversationText += `${role}: ${text}\n\n`;
-        }
-    });
-    
-    copyToClipboard(conversationText).then(success => {
-        if (success) {
-            showNotification('Conversation copied to clipboard', 'success');
-        } else {
-            showNotification('Failed to copy conversation', 'error');
-        }
-    });
-}
-
-function clearConversation() {
-    if (confirm('Clear this conversation? This action cannot be undone.')) {
-        clearStoredConversation();
-        
-        if (window.mathInterface && window.mathInterface.sessionId) {
-            fetch(`${window.mathInterface.apiUrl}/sessions/${window.mathInterface.sessionId}/clear`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => {
-                if (response.ok) {
-                    resetConversationUI();
-                    showNotification('Conversation cleared', 'success');
-                } else {
-                    showNotification('Failed to clear conversation', 'error');
-                }
-            })
-            .catch(error => {
-                console.error('Error clearing conversation:', error);
-                resetConversationUI();
-                showNotification('Conversation cleared locally', 'warning');
-            });
-        } else {
-            resetConversationUI();
-            showNotification('Conversation cleared', 'success');
-        }
-    }
-}
-
-function resetConversationUI() {
-    const conversationArea = document.getElementById('conversation');
-    if (conversationArea) {
-        conversationArea.innerHTML = `
-            <div class="message-group">
-                <div class="message message-assistant">
-                    <div class="content">
-                        Right, I'm your AI math teacher. Ask me whatever mathematical questions you have - I'll give you clear, direct explanations. Try to keep up.
-                    </div>
-                </div>
-            </div>
-        `;
-    }
-    
-    if (window.mathInterface) {
-        window.mathInterface.sessionId = null;
-    }
-    
-    // Reset session timestamp
-    updateSessionTimestamp();
 }
 
 // Notification system
@@ -810,7 +810,7 @@ function hideLoadingState() {
     if (sendButton) {
         sendButton.classList.remove('loading');
         sendButton.disabled = false;
-        sendButton.innerHTML = 'send';
+        sendButton.innerHTML = 'execute';
     }
     
     hideTypingIndicator();

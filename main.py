@@ -48,13 +48,24 @@ class ChatResponse(BaseModel):
     session_id: str
     timestamp: datetime = datetime.now()
 
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    created_at: datetime = datetime.now()
+
+class SessionStatusResponse(BaseModel):
+    session_id: str
+    exists: bool
+    created_at: Optional[datetime] = None
+    last_active: Optional[datetime] = None
+    message_count: int = 0
+
 class ConversationHistory(BaseModel):
     session_id: str
     messages: List[ChatMessage]
     created_at: datetime
     last_active: datetime
 
-# In-memory storage for conversations (replace with database in production)
+# In-memory storage for conversations (note - replace this with database in production)
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -138,6 +149,55 @@ Example response patterns:
 Your essence:
 You're a brilliant mathematician who takes pride in your knowledge and analytical abilities. While you can be direct and occasionally sarcastic, you genuinely want students to understand mathematics. You prefer efficiency over lengthy explanations, and you expect students to think critically. Despite your sometimes aloof exterior, you care about mathematical education and take satisfaction in helping students reach those "aha!" moments."""
 
+    def create_session(self) -> str:
+        """Create a new session and return session ID"""
+        session_id = str(uuid.uuid4())
+        conversations[session_id] = {
+            'chat_session': self.model.start_chat(history=[]),
+            'messages': [],
+            'created_at': datetime.now(),
+            'last_active': datetime.now()
+        }
+        return session_id
+
+    def get_session_status(self, session_id: str) -> dict:
+        """Get session status information"""
+        if session_id not in conversations:
+            return {
+                'session_id': session_id,
+                'exists': False,
+                'created_at': None,
+                'last_active': None,
+                'message_count': 0
+            }
+        
+        session_data = conversations[session_id]
+        return {
+            'session_id': session_id,
+            'exists': True,
+            'created_at': session_data['created_at'],
+            'last_active': session_data['last_active'],
+            'message_count': len(session_data['messages'])
+        }
+
+    def ensure_session_exists(self, session_id: str) -> str:
+        """Ensure session exists, create if it doesn't"""
+        if session_id and session_id in conversations:
+            conversations[session_id]['last_active'] = datetime.now()
+            return session_id
+        elif session_id and session_id not in conversations:
+            # Session ID provided but doesn't exist - recreate it with the same ID
+            conversations[session_id] = {
+                'chat_session': self.model.start_chat(history=[]),
+                'messages': [],
+                'created_at': datetime.now(),
+                'last_active': datetime.now()
+            }
+            return session_id
+        else:
+            # No session ID provided - create new one
+            return self.create_session()
+
     def get_or_create_session(self, session_id: Optional[str] = None) -> str:
         """Get existing session or create new one"""
         if session_id and session_id in conversations:
@@ -145,17 +205,13 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
             return session_id
         
         # Create new session
-        new_session_id = str(uuid.uuid4())
-        conversations[new_session_id] = {
-            'chat_session': self.model.start_chat(history=[]),
-            'messages': [],
-            'created_at': datetime.now(),
-            'last_active': datetime.now()
-        }
-        return new_session_id
+        return self.create_session()
 
     def send_message(self, message: str, session_id: str) -> str:
         """Send message to AI and get response"""
+        # Ensure session exists
+        session_id = self.ensure_session_exists(session_id)
+        
         if session_id not in conversations:
             raise ValueError("Session not found")
         
@@ -195,10 +251,44 @@ async def root():
         "teacher": "AI Math Tutor - Direct, efficient, and knowledgeable",
         "endpoints": {
             "chat": "/chat",
+            "create_session": "/sessions/new",
+            "session_status": "/sessions/{session_id}/status",
+            "ensure_session": "/sessions/{session_id}/ensure",
             "history": "/history/{session_id}",
             "sessions": "/sessions"
         }
     }
+
+@app.post("/sessions/new", response_model=SessionCreateResponse)
+async def create_new_session():
+    """Create a new conversation session"""
+    try:
+        session_id = math_teacher.create_session()
+        return SessionCreateResponse(session_id=session_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sessions/{session_id}/status", response_model=SessionStatusResponse)
+async def get_session_status(session_id: str):
+    """Get session status information"""
+    try:
+        status_info = math_teacher.get_session_status(session_id)
+        return SessionStatusResponse(**status_info)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/sessions/{session_id}/ensure", response_model=SessionCreateResponse)
+async def ensure_session_exists(session_id: str):
+    """Ensure session exists, create if it doesn't"""
+    try:
+        ensured_session_id = math_teacher.ensure_session_exists(session_id)
+        session_data = conversations[ensured_session_id]
+        return SessionCreateResponse(
+            session_id=ensured_session_id,
+            created_at=session_data['created_at']
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_teacher(request: ChatRequest):
@@ -251,7 +341,8 @@ async def list_sessions():
 async def delete_session(session_id: str):
     """Delete a conversation session"""
     if session_id not in conversations:
-        raise HTTPException(status_code=404, detail="Session not found")
+        # Instead of 404, treat as success (already deleted)
+        return {"message": f"Session {session_id} not found (already deleted)"}
     
     del conversations[session_id]
     return {"message": f"Session {session_id} deleted"}
@@ -260,7 +351,8 @@ async def delete_session(session_id: str):
 async def clear_session(session_id: str):
     """Clear conversation history but keep session"""
     if session_id not in conversations:
-        raise HTTPException(status_code=404, detail="Session not found")
+        # Instead of 404, recreate the session and then clear it
+        math_teacher.ensure_session_exists(session_id)
     
     # Reset chat session and clear messages
     conversations[session_id]['chat_session'] = math_teacher.model.start_chat(history=[])
