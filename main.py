@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Math Teacher FastAPI Backend
+AI Math Teacher FastAPI Backend with Comprehensive Logging
 A web API for the AI math tutor using Google Gemini
 """
 
@@ -8,11 +8,19 @@ import os
 import uuid
 from typing import List, Optional
 from datetime import datetime
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
+
+# Import our logging system
+from logging_system import (
+    math_logger, log_performance, log_request_context, 
+    log_startup, log_shutdown, log_session_created, 
+    log_session_restored, log_conversation_cleared,
+    log_message_sent, log_feature_used
+)
 
 # Load environment variables
 load_dotenv()
@@ -65,7 +73,7 @@ class ConversationHistory(BaseModel):
     created_at: datetime
     last_active: datetime
 
-# In-memory storage for conversations (note - replace this with database in production)
+# In-memory storage for conversations (replace with database in production)
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -81,6 +89,8 @@ class MathTeacherAPI:
             model_name="gemini-1.5-flash",
             system_instruction=self.get_system_prompt()
         )
+        
+        math_logger.logger.info("Math Teacher API initialized successfully")
     
     def get_system_prompt(self):
         """Define the AI's personality and behavior"""
@@ -121,13 +131,7 @@ Mathematical formatting:
 - Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
 - Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
 
-Special commands for enhanced learning (USE ONLY WHEN SPECIFICALLY REQUESTED):
-- Graph generation: [GRAPH:function:f(x)=expression:xMin:xMax]
-  Examples: [GRAPH:function:f(x)=x^2:-5:5], [GRAPH:function:f(x)=sin(x):-6.28:6.28]
-  ONLY use when student asks to "graph", "plot", "visualize", or "show me the graph"
-- Practice problems: [PRACTICE:difficulty:problem_statement]
-  Examples: [PRACTICE:easy:Solve for x: $2x + 5 = 13$], [PRACTICE:medium:Find the derivative of $f(x) = 3x^2 - 2x + 1$]
-  ONLY use when student asks for "practice problems", "exercises", "problems to solve", or similar requests
+When creating mathematical content like graphs or practice problems, generate them as structured artifacts that the frontend can render properly, rather than using simple text commands.
 
 Key behavioral rules:
 - Keep responses reasonably short and focused on answering the question
@@ -135,7 +139,6 @@ Key behavioral rules:
 - Show your expertise through clear explanations, not lengthy lectures
 - Use mild sarcasm or dry humor occasionally, but stay helpful
 - Express genuine interest in complex mathematical problems
-- Don't automatically generate graphs or practice problems unless specifically requested
 - When students struggle, show a bit more patience (though you might sigh first)
 - React with slight embarrassment to compliments, then redirect to the math
 
@@ -149,6 +152,7 @@ Example response patterns:
 Your essence:
 You're a brilliant mathematician who takes pride in your knowledge and analytical abilities. While you can be direct and occasionally sarcastic, you genuinely want students to understand mathematics. You prefer efficiency over lengthy explanations, and you expect students to think critically. Despite your sometimes aloof exterior, you care about mathematical education and take satisfaction in helping students reach those "aha!" moments."""
 
+    @log_performance("create_session")
     def create_session(self) -> str:
         """Create a new session and return session ID"""
         session_id = str(uuid.uuid4())
@@ -158,8 +162,17 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
             'created_at': datetime.now(),
             'last_active': datetime.now()
         }
+        
+        # Set session context for logging
+        math_logger.set_session_context(session_id, {
+            'user_agent': 'unknown',  # Can be populated from request headers
+            'session_type': 'new'
+        })
+        
+        log_session_created(session_id)
         return session_id
 
+    @log_performance("get_session_status")
     def get_session_status(self, session_id: str) -> dict:
         """Get session status information"""
         if session_id not in conversations:
@@ -180,6 +193,7 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
             'message_count': len(session_data['messages'])
         }
 
+    @log_performance("ensure_session_exists")
     def ensure_session_exists(self, session_id: str) -> str:
         """Ensure session exists, create if it doesn't"""
         if session_id and session_id in conversations:
@@ -193,11 +207,18 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
                 'created_at': datetime.now(),
                 'last_active': datetime.now()
             }
+            
+            math_logger.set_session_context(session_id, {
+                'session_type': 'restored'
+            })
+            
+            log_session_restored(session_id, 0)
             return session_id
         else:
             # No session ID provided - create new one
             return self.create_session()
 
+    @log_performance("get_or_create_session")
     def get_or_create_session(self, session_id: Optional[str] = None) -> str:
         """Get existing session or create new one"""
         if session_id and session_id in conversations:
@@ -207,8 +228,12 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
         # Create new session
         return self.create_session()
 
+    @log_performance("send_message")
     def send_message(self, message: str, session_id: str) -> str:
         """Send message to AI and get response"""
+        import time
+        start_time = time.time()
+        
         # Ensure session exists
         session_id = self.ensure_session_exists(session_id)
         
@@ -218,10 +243,16 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
         session_data = conversations[session_id]
         chat_session = session_data['chat_session']
         
+        # Log the incoming message
+        log_message_sent(session_id, len(message))
+        
         try:
             # Send message to Gemini
             response = chat_session.send_message(message)
             response_text = response.text
+            
+            # Calculate response time
+            response_time = (time.time() - start_time) * 1000
             
             # Store messages in conversation history
             session_data['messages'].extend([
@@ -230,18 +261,49 @@ You're a brilliant mathematician who takes pride in your knowledge and analytica
             ])
             session_data['last_active'] = datetime.now()
             
+            # Log successful AI interaction
+            math_logger.log_ai_interaction(
+                session_id, 
+                len(message), 
+                len(response_text), 
+                response_time, 
+                success=True
+            )
+            
             return response_text
             
         except Exception as e:
+            response_time = (time.time() - start_time) * 1000
             error_msg = str(e)
+            
+            # Log failed AI interaction
+            math_logger.log_ai_interaction(
+                session_id, 
+                len(message), 
+                0, 
+                response_time, 
+                success=False,
+                error=error_msg
+            )
+            
             if "quota" in error_msg.lower() or "limit" in error_msg.lower():
                 return "Hmph, looks like the API is being overloaded right now. Try again in a minute - I don't have infinite processing power, you know."
+            
             raise HTTPException(status_code=500, detail=f"Error communicating with AI: {error_msg}")
 
 # Initialize the math teacher
 math_teacher = MathTeacherAPI()
 
-# API Routes
+# Startup and shutdown events
+@app.on_event("startup")
+async def startup_event():
+    log_startup()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    log_shutdown()
+
+# API Routes with logging
 @app.get("/")
 async def root():
     """Root endpoint"""
@@ -260,117 +322,174 @@ async def root():
     }
 
 @app.post("/sessions/new", response_model=SessionCreateResponse)
-async def create_new_session():
+async def create_new_session(request: Request):
     """Create a new conversation session"""
     try:
-        session_id = math_teacher.create_session()
-        return SessionCreateResponse(session_id=session_id)
+        with log_request_context(None, "/sessions/new", "POST"):
+            session_id = math_teacher.create_session()
+            
+            # Log user agent for analytics
+            user_agent = request.headers.get("user-agent", "unknown")
+            math_logger.set_session_context(session_id, {
+                'user_agent': user_agent,
+                'session_type': 'new'
+            })
+            
+            log_feature_used(session_id, "session_creation")
+            return SessionCreateResponse(session_id=session_id)
     except Exception as e:
+        math_logger.log_error(None, e, "create_new_session")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions/{session_id}/status", response_model=SessionStatusResponse)
 async def get_session_status(session_id: str):
     """Get session status information"""
     try:
-        status_info = math_teacher.get_session_status(session_id)
-        return SessionStatusResponse(**status_info)
+        with log_request_context(session_id, f"/sessions/{session_id}/status", "GET"):
+            status_info = math_teacher.get_session_status(session_id)
+            log_feature_used(session_id, "session_status_check")
+            return SessionStatusResponse(**status_info)
     except Exception as e:
+        math_logger.log_error(session_id, e, "get_session_status")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sessions/{session_id}/ensure", response_model=SessionCreateResponse)
 async def ensure_session_exists(session_id: str):
     """Ensure session exists, create if it doesn't"""
     try:
-        ensured_session_id = math_teacher.ensure_session_exists(session_id)
-        session_data = conversations[ensured_session_id]
-        return SessionCreateResponse(
-            session_id=ensured_session_id,
-            created_at=session_data['created_at']
-        )
+        with log_request_context(session_id, f"/sessions/{session_id}/ensure", "POST"):
+            ensured_session_id = math_teacher.ensure_session_exists(session_id)
+            session_data = conversations[ensured_session_id]
+            log_feature_used(session_id, "session_ensure")
+            return SessionCreateResponse(
+                session_id=ensured_session_id,
+                created_at=session_data['created_at']
+            )
     except Exception as e:
+        math_logger.log_error(session_id, e, "ensure_session_exists")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_teacher(request: ChatRequest):
     """Send a message to the AI teacher and get a response"""
     try:
-        # Get or create session
-        session_id = math_teacher.get_or_create_session(request.session_id)
-        
-        # Get response from AI
-        response = math_teacher.send_message(request.message, session_id)
-        
-        return ChatResponse(
-            response=response,
-            session_id=session_id
-        )
+        with log_request_context(request.session_id, "/chat", "POST"):
+            # Get or create session
+            session_id = math_teacher.get_or_create_session(request.session_id)
+            
+            # Get response from AI
+            response = math_teacher.send_message(request.message, session_id)
+            
+            log_feature_used(session_id, "chat_message", {
+                'message_length': len(request.message),
+                'response_length': len(response)
+            })
+            
+            return ChatResponse(
+                response=response,
+                session_id=session_id
+            )
     
     except Exception as e:
+        math_logger.log_error(request.session_id, e, "chat_with_teacher")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history/{session_id}")
 async def get_conversation_history(session_id: str):
     """Get conversation history for a session"""
-    if session_id not in conversations:
-        raise HTTPException(status_code=404, detail="Session not found")
-    
-    session_data = conversations[session_id]
-    return ConversationHistory(
-        session_id=session_id,
-        messages=session_data['messages'],
-        created_at=session_data['created_at'],
-        last_active=session_data['last_active']
-    )
+    try:
+        with log_request_context(session_id, f"/history/{session_id}", "GET"):
+            if session_id not in conversations:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            session_data = conversations[session_id]
+            log_feature_used(session_id, "history_access")
+            
+            return ConversationHistory(
+                session_id=session_id,
+                messages=session_data['messages'],
+                created_at=session_data['created_at'],
+                last_active=session_data['last_active']
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(session_id, e, "get_conversation_history")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions")
 async def list_sessions():
     """List all active sessions"""
-    return {
-        "sessions": [
-            {
-                "session_id": sid,
-                "created_at": data['created_at'],
-                "last_active": data['last_active'],
-                "message_count": len(data['messages'])
+    try:
+        with log_request_context(None, "/sessions", "GET"):
+            log_feature_used(None, "sessions_list")
+            return {
+                "sessions": [
+                    {
+                        "session_id": sid,
+                        "created_at": data['created_at'],
+                        "last_active": data['last_active'],
+                        "message_count": len(data['messages'])
+                    }
+                    for sid, data in conversations.items()
+                ]
             }
-            for sid, data in conversations.items()
-        ]
-    }
+    except Exception as e:
+        math_logger.log_error(None, e, "list_sessions")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Delete a conversation session"""
-    if session_id not in conversations:
-        # Instead of 404, treat as success (already deleted)
-        return {"message": f"Session {session_id} not found (already deleted)"}
-    
-    del conversations[session_id]
-    return {"message": f"Session {session_id} deleted"}
+    try:
+        with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
+            if session_id not in conversations:
+                # Instead of 404, treat as success (already deleted)
+                return {"message": f"Session {session_id} not found (already deleted)"}
+            
+            del conversations[session_id]
+            log_feature_used(session_id, "session_delete")
+            return {"message": f"Session {session_id} deleted"}
+    except Exception as e:
+        math_logger.log_error(session_id, e, "delete_session")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sessions/{session_id}/clear")
 async def clear_session(session_id: str):
     """Clear conversation history but keep session"""
-    if session_id not in conversations:
-        # Instead of 404, recreate the session and then clear it
-        math_teacher.ensure_session_exists(session_id)
-    
-    # Reset chat session and clear messages
-    conversations[session_id]['chat_session'] = math_teacher.model.start_chat(history=[])
-    conversations[session_id]['messages'] = []
-    conversations[session_id]['last_active'] = datetime.now()
-    
-    return {"message": f"Session {session_id} cleared"}
+    try:
+        with log_request_context(session_id, f"/sessions/{session_id}/clear", "POST"):
+            if session_id not in conversations:
+                # Instead of 404, recreate the session and then clear it
+                math_teacher.ensure_session_exists(session_id)
+            
+            # Reset chat session and clear messages
+            conversations[session_id]['chat_session'] = math_teacher.model.start_chat(history=[])
+            conversations[session_id]['messages'] = []
+            conversations[session_id]['last_active'] = datetime.now()
+            
+            log_conversation_cleared(session_id)
+            log_feature_used(session_id, "conversation_clear")
+            
+            return {"message": f"Session {session_id} cleared"}
+    except Exception as e:
+        math_logger.log_error(session_id, e, "clear_session")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(),
-        "active_sessions": len(conversations),
-        "teacher": "AI math teacher running efficiently"
-    }
+    try:
+        return {
+            "status": "healthy",
+            "timestamp": datetime.now(),
+            "active_sessions": len(conversations),
+            "teacher": "AI math teacher running efficiently"
+        }
+    except Exception as e:
+        math_logger.log_error(None, e, "health_check")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
