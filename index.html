@@ -1,10 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Math Teacher</title>
+    <title>AI Math Teacher - Terminal Interface</title>
     <link rel="icon" href="data:,">
+    <!-- 8-bit Theme Styles -->
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/components.css">
     <link rel="stylesheet" href="styles/responsive.css">
@@ -14,11 +15,11 @@
         <header class="header">
             <div class="header-left">
                 <div class="status-indicator"></div>
-                <span>mathematical intelligence</span>
+                <span>█ MATH TERMINAL █</span>
             </div>
             <div class="header-actions">
                 <button id="theme-toggle" class="header-btn" title="Toggle theme">
-                    <span class="theme-icon">THEME</span>
+                    <span class="theme-icon">DARK</span>
                 </button>
                 <button id="copy-conversation" class="header-btn" title="Copy conversation">
                     <span class="copy-icon">COPY</span>
@@ -27,7 +28,10 @@
                     <span class="clear-icon">CLEAR</span>
                 </button>
                 <div class="session-info">
-                    <span id="session-display">ACTIVE</span>
+                    <span id="session-display">
+                        <div class="session-id">ACTIVE</div>
+                        <div class="session-time">ready</div>
+                    </span>
                 </div>
             </div>
         </header>
@@ -57,28 +61,28 @@
                 <textarea 
                     id="message-input" 
                     class="input-field" 
-                    placeholder="enter mathematical query..."
+                    placeholder="enter query..."
                     rows="1"
                 ></textarea>
                 <div class="input-hint">
-                    <span class="hint-text">Press <kbd>Enter</kbd> to send • <kbd>Shift</kbd> + <kbd>Enter</kbd> for new line</span>
+                    <span class="hint-text">Press <kbd>Enter</kbd> to send • <kbd>Shift</kbd> + <kbd>Enter</kbd> for new line • <kbd>Esc</kbd> to clear</span>
                 </div>
             </div>
             <div class="input-actions">
-                <button class="action-btn" onclick="showHelp()">help</button>
-                <button id="send-button" class="action-btn primary">execute</button>
+                <button class="action-btn" onclick="showHelp()">HELP</button>
+                <button id="send-button" class="action-btn primary">EXECUTE</button>
             </div>
         </div>
         
         <!-- Math Symbol Palette -->
         <div id="symbol-palette" class="palette hidden">
             <div class="palette-header">
-                <span>Mathematical Symbols</span>
-                <button id="close-symbols" class="close-btn">close</button>
+                <span>█ MATHEMATICAL SYMBOLS █</span>
+                <button id="close-symbols" class="close-btn">CLOSE</button>
             </div>
             <div class="palette-content">
                 <div class="symbol-category">
-                    <div class="category-label">Greek Letters</div>
+                    <div class="category-label">► GREEK LETTERS</div>
                     <div class="symbol-grid">
                         <button class="symbol-btn" data-symbol="α">α</button>
                         <button class="symbol-btn" data-symbol="β">β</button>
@@ -92,44 +96,62 @@
                         <button class="symbol-btn" data-symbol="σ">σ</button>
                         <button class="symbol-btn" data-symbol="φ">φ</button>
                         <button class="symbol-btn" data-symbol="ω">ω</button>
+                        <button class="symbol-btn" data-symbol="Α">Α</button>
+                        <button class="symbol-btn" data-symbol="Β">Β</button>
+                        <button class="symbol-btn" data-symbol="Γ">Γ</button>
+                        <button class="symbol-btn" data-symbol="Δ">Δ</button>
+                        <button class="symbol-btn" data-symbol="Θ">Θ</button>
+                        <button class="symbol-btn" data-symbol="Λ">Λ</button>
+                        <button class="symbol-btn" data-symbol="Π">Π</button>
+                        <button class="symbol-btn" data-symbol="Σ">Σ</button>
+                        <button class="symbol-btn" data-symbol="Φ">Φ</button>
+                        <button class="symbol-btn" data-symbol="Ω">Ω</button>
                     </div>
                 </div>
                 <div class="symbol-category">
-                    <div class="category-label">Operators</div>
+                    <div class="category-label">► OPERATORS</div>
                     <div class="symbol-grid">
                         <button class="symbol-btn" data-symbol="±">±</button>
+                        <button class="symbol-btn" data-symbol="∓">∓</button>
                         <button class="symbol-btn" data-symbol="×">×</button>
                         <button class="symbol-btn" data-symbol="÷">÷</button>
                         <button class="symbol-btn" data-symbol="≠">≠</button>
                         <button class="symbol-btn" data-symbol="≤">≤</button>
                         <button class="symbol-btn" data-symbol="≥">≥</button>
                         <button class="symbol-btn" data-symbol="≈">≈</button>
+                        <button class="symbol-btn" data-symbol="≡">≡</button>
                         <button class="symbol-btn" data-symbol="∝">∝</button>
                         <button class="symbol-btn" data-symbol="∞">∞</button>
                         <button class="symbol-btn" data-symbol="∴">∴</button>
                         <button class="symbol-btn" data-symbol="∵">∵</button>
                         <button class="symbol-btn" data-symbol="∀">∀</button>
+                        <button class="symbol-btn" data-symbol="∃">∃</button>
+                        <button class="symbol-btn" data-symbol="¬">¬</button>
                     </div>
                 </div>
                 <div class="symbol-category">
-                    <div class="category-label">Calculus</div>
+                    <div class="category-label">► CALCULUS</div>
                     <div class="symbol-grid">
                         <button class="symbol-btn" data-symbol="∫">∫</button>
+                        <button class="symbol-btn" data-symbol="∬">∬</button>
+                        <button class="symbol-btn" data-symbol="∭">∭</button>
+                        <button class="symbol-btn" data-symbol="∮">∮</button>
                         <button class="symbol-btn" data-symbol="∑">∑</button>
                         <button class="symbol-btn" data-symbol="∏">∏</button>
                         <button class="symbol-btn" data-symbol="∂">∂</button>
                         <button class="symbol-btn" data-symbol="∇">∇</button>
-                        <button class="symbol-btn" data-symbol="Δ">Δ</button>
                         <button class="symbol-btn" data-symbol="√">√</button>
                         <button class="symbol-btn" data-symbol="∛">∛</button>
+                        <button class="symbol-btn" data-symbol="∜">∜</button>
                         <button class="symbol-btn" data-symbol="lim">lim</button>
                         <button class="symbol-btn" data-symbol="→">→</button>
-                        <button class="symbol-btn" data-symbol="∈">∈</button>
-                        <button class="symbol-btn" data-symbol="∉">∉</button>
+                        <button class="symbol-btn" data-symbol="⇒">⇒</button>
+                        <button class="symbol-btn" data-symbol="⇔">⇔</button>
+                        <button class="symbol-btn" data-symbol="↔">↔</button>
                     </div>
                 </div>
                 <div class="symbol-category">
-                    <div class="category-label">Sets & Logic</div>
+                    <div class="category-label">► SETS & LOGIC</div>
                     <div class="symbol-grid">
                         <button class="symbol-btn" data-symbol="∪">∪</button>
                         <button class="symbol-btn" data-symbol="∩">∩</button>
@@ -138,11 +160,37 @@
                         <button class="symbol-btn" data-symbol="⊆">⊆</button>
                         <button class="symbol-btn" data-symbol="⊇">⊇</button>
                         <button class="symbol-btn" data-symbol="∅">∅</button>
+                        <button class="symbol-btn" data-symbol="∈">∈</button>
+                        <button class="symbol-btn" data-symbol="∉">∉</button>
                         <button class="symbol-btn" data-symbol="∧">∧</button>
                         <button class="symbol-btn" data-symbol="∨">∨</button>
-                        <button class="symbol-btn" data-symbol="¬">¬</button>
-                        <button class="symbol-btn" data-symbol="⟹">⟹</button>
-                        <button class="symbol-btn" data-symbol="⟺">⟺</button>
+                        <button class="symbol-btn" data-symbol="⊕">⊕</button>
+                        <button class="symbol-btn" data-symbol="ℕ">ℕ</button>
+                        <button class="symbol-btn" data-symbol="ℤ">ℤ</button>
+                        <button class="symbol-btn" data-symbol="ℚ">ℚ</button>
+                        <button class="symbol-btn" data-symbol="ℝ">ℝ</button>
+                        <button class="symbol-btn" data-symbol="ℂ">ℂ</button>
+                    </div>
+                </div>
+                <div class="symbol-category">
+                    <div class="category-label">► GEOMETRY</div>
+                    <div class="symbol-grid">
+                        <button class="symbol-btn" data-symbol="∠">∠</button>
+                        <button class="symbol-btn" data-symbol="∟">∟</button>
+                        <button class="symbol-btn" data-symbol="⊥">⊥</button>
+                        <button class="symbol-btn" data-symbol="∥">∥</button>
+                        <button class="symbol-btn" data-symbol="≅">≅</button>
+                        <button class="symbol-btn" data-symbol="∼">∼</button>
+                        <button class="symbol-btn" data-symbol="⌒">⌒</button>
+                        <button class="symbol-btn" data-symbol="°">°</button>
+                        <button class="symbol-btn" data-symbol="′">′</button>
+                        <button class="symbol-btn" data-symbol="″">″</button>
+                        <button class="symbol-btn" data-symbol="△">△</button>
+                        <button class="symbol-btn" data-symbol="□">□</button>
+                        <button class="symbol-btn" data-symbol="◯">◯</button>
+                        <button class="symbol-btn" data-symbol="⬟">⬟</button>
+                        <button class="symbol-btn" data-symbol="⬢">⬢</button>
+                        <button class="symbol-btn" data-symbol="⬡">⬡</button>
                     </div>
                 </div>
             </div>
@@ -151,58 +199,86 @@
         <!-- Problem Templates -->
         <div id="template-palette" class="palette hidden">
             <div class="palette-header">
-                <span>Problem Templates</span>
-                <button id="close-templates" class="close-btn">close</button>
+                <span>█ PROBLEM TEMPLATES █</span>
+                <button id="close-templates" class="close-btn">CLOSE</button>
             </div>
             <div class="palette-content">
                 <div class="template-category">
-                    <div class="category-label">Algebra</div>
+                    <div class="category-label">► ALGEBRA</div>
                     <div class="template-list">
-                        <button class="template-btn" data-template="Help me solve this equation: ">Solve equation</button>
-                        <button class="template-btn" data-template="Factor this expression: ">Factor expression</button>
-                        <button class="template-btn" data-template="Simplify this: ">Simplify expression</button>
-                        <button class="template-btn" data-template="Find the roots of: ">Find roots</button>
-                        <button class="template-btn" data-template="Complete the square for: ">Complete the square</button>
+                        <button class="template-btn" data-template="Help me solve this equation: ">SOLVE EQUATION</button>
+                        <button class="template-btn" data-template="Factor this expression: ">FACTOR EXPRESSION</button>
+                        <button class="template-btn" data-template="Simplify this: ">SIMPLIFY EXPRESSION</button>
+                        <button class="template-btn" data-template="Find the roots of: ">FIND ROOTS</button>
+                        <button class="template-btn" data-template="Complete the square for: ">COMPLETE THE SQUARE</button>
+                        <button class="template-btn" data-template="Solve this system of equations: ">SOLVE SYSTEM</button>
+                        <button class="template-btn" data-template="Find the inverse of this function: ">INVERSE FUNCTION</button>
+                        <button class="template-btn" data-template="Expand and simplify: ">EXPAND & SIMPLIFY</button>
                     </div>
                 </div>
                 <div class="template-category">
-                    <div class="category-label">Calculus</div>
+                    <div class="category-label">► CALCULUS</div>
                     <div class="template-list">
-                        <button class="template-btn" data-template="Find the derivative of: ">Find derivative</button>
-                        <button class="template-btn" data-template="Integrate this function: ">Integrate function</button>
-                        <button class="template-btn" data-template="Find the limit: ">Find limit</button>
-                        <button class="template-btn" data-template="Optimize this function: ">Optimization</button>
-                        <button class="template-btn" data-template="Find critical points of: ">Critical points</button>
+                        <button class="template-btn" data-template="Find the derivative of: ">FIND DERIVATIVE</button>
+                        <button class="template-btn" data-template="Integrate this function: ">INTEGRATE FUNCTION</button>
+                        <button class="template-btn" data-template="Find the limit: ">FIND LIMIT</button>
+                        <button class="template-btn" data-template="Optimize this function: ">OPTIMIZATION</button>
+                        <button class="template-btn" data-template="Find critical points of: ">CRITICAL POINTS</button>
+                        <button class="template-btn" data-template="Find the area under the curve: ">AREA UNDER CURVE</button>
+                        <button class="template-btn" data-template="Solve this differential equation: ">DIFFERENTIAL EQUATION</button>
+                        <button class="template-btn" data-template="Find the Taylor series for: ">TAYLOR SERIES</button>
                     </div>
                 </div>
                 <div class="template-category">
-                    <div class="category-label">Geometry</div>
+                    <div class="category-label">► GEOMETRY</div>
                     <div class="template-list">
-                        <button class="template-btn" data-template="Find the area of: ">Find area</button>
-                        <button class="template-btn" data-template="Calculate the volume of: ">Find volume</button>
-                        <button class="template-btn" data-template="Prove that these triangles are: ">Triangle proof</button>
-                        <button class="template-btn" data-template="Find the distance between: ">Distance formula</button>
-                        <button class="template-btn" data-template="What is the angle between: ">Angle calculation</button>
+                        <button class="template-btn" data-template="Find the area of: ">FIND AREA</button>
+                        <button class="template-btn" data-template="Calculate the volume of: ">FIND VOLUME</button>
+                        <button class="template-btn" data-template="Prove that these triangles are: ">TRIANGLE PROOF</button>
+                        <button class="template-btn" data-template="Find the distance between: ">DISTANCE FORMULA</button>
+                        <button class="template-btn" data-template="What is the angle between: ">ANGLE CALCULATION</button>
+                        <button class="template-btn" data-template="Find the perimeter of: ">FIND PERIMETER</button>
+                        <button class="template-btn" data-template="Calculate the surface area of: ">SURFACE AREA</button>
+                        <button class="template-btn" data-template="Find the equation of the line: ">LINE EQUATION</button>
                     </div>
                 </div>
                 <div class="template-category">
-                    <div class="category-label">Functions & Graphing</div>
+                    <div class="category-label">► FUNCTIONS & GRAPHING</div>
                     <div class="template-list">
-                        <button class="template-btn" data-template="Graph the function: ">Graph function</button>
-                        <button class="template-btn" data-template="Find the domain and range of: ">Domain & range</button>
-                        <button class="template-btn" data-template="Analyze the behavior of: ">Function analysis</button>
-                        <button class="template-btn" data-template="Find the inverse of: ">Inverse function</button>
-                        <button class="template-btn" data-template="Transform this function: ">Function transformation</button>
+                        <button class="template-btn" data-template="Graph the function: ">GRAPH FUNCTION</button>
+                        <button class="template-btn" data-template="Find the domain and range of: ">DOMAIN & RANGE</button>
+                        <button class="template-btn" data-template="Analyze the behavior of: ">FUNCTION ANALYSIS</button>
+                        <button class="template-btn" data-template="Transform this function: ">FUNCTION TRANSFORMATION</button>
+                        <button class="template-btn" data-template="Find the intercepts of: ">FIND INTERCEPTS</button>
+                        <button class="template-btn" data-template="Determine if this function is: ">FUNCTION PROPERTIES</button>
+                        <button class="template-btn" data-template="Find the asymptotes of: ">FIND ASYMPTOTES</button>
+                        <button class="template-btn" data-template="Sketch the graph of: ">SKETCH GRAPH</button>
                     </div>
                 </div>
                 <div class="template-category">
-                    <div class="category-label">Practice & Learning</div>
+                    <div class="category-label">► STATISTICS & PROBABILITY</div>
                     <div class="template-list">
-                        <button class="template-btn" data-template="Explain the concept of ">Explain concept</button>
-                        <button class="template-btn" data-template="Give me practice problems for ">Practice problems</button>
-                        <button class="template-btn" data-template="What's the difference between ">Compare concepts</button>
-                        <button class="template-btn" data-template="Show me step-by-step how to ">Step-by-step guide</button>
-                        <button class="template-btn" data-template="Help me understand why ">Conceptual understanding</button>
+                        <button class="template-btn" data-template="Calculate the mean, median, and mode of: ">CENTRAL TENDENCY</button>
+                        <button class="template-btn" data-template="Find the standard deviation of: ">STANDARD DEVIATION</button>
+                        <button class="template-btn" data-template="What is the probability of: ">PROBABILITY</button>
+                        <button class="template-btn" data-template="Perform a hypothesis test for: ">HYPOTHESIS TEST</button>
+                        <button class="template-btn" data-template="Find the correlation between: ">CORRELATION</button>
+                        <button class="template-btn" data-template="Calculate the z-score for: ">Z-SCORE</button>
+                        <button class="template-btn" data-template="Create a confidence interval for: ">CONFIDENCE INTERVAL</button>
+                        <button class="template-btn" data-template="Analyze this data set: ">DATA ANALYSIS</button>
+                    </div>
+                </div>
+                <div class="template-category">
+                    <div class="category-label">► PRACTICE & LEARNING</div>
+                    <div class="template-list">
+                        <button class="template-btn" data-template="Explain the concept of ">EXPLAIN CONCEPT</button>
+                        <button class="template-btn" data-template="Give me practice problems for ">PRACTICE PROBLEMS</button>
+                        <button class="template-btn" data-template="What's the difference between ">COMPARE CONCEPTS</button>
+                        <button class="template-btn" data-template="Show me step-by-step how to ">STEP-BY-STEP GUIDE</button>
+                        <button class="template-btn" data-template="Help me understand why ">CONCEPTUAL UNDERSTANDING</button>
+                        <button class="template-btn" data-template="Create an interactive exercise for ">INTERACTIVE EXERCISE</button>
+                        <button class="template-btn" data-template="Quiz me on ">QUIZ MODE</button>
+                        <button class="template-btn" data-template="Review the key points of ">REVIEW SESSION</button>
                     </div>
                 </div>
             </div>
@@ -217,9 +293,7 @@
     <!-- Application Scripts -->
     <script src="js/utils.js"></script>
     <script src="js/math-interface.js"></script>
-    <script src="js/graph-handler.js"></script>
-    <script src="js/practice-handler.js"></script>
-    <script src="js/app.js"></script>
     <script src="js/artifact-renderer.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>

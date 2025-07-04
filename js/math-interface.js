@@ -12,6 +12,7 @@ class EnhancedMathInterface {
         
         // Initialize artifact renderer
         this.artifactRenderer = window.artifactRenderer;
+
         
         this.initializeEventListeners();
         this.initializeSession();
@@ -119,7 +120,7 @@ class EnhancedMathInterface {
         this.messageInput.disabled = false;
         
         // Update UI state
-        this.messageInput.placeholder = "enter mathematical query...";
+        this.messageInput.placeholder = "enter query...";
     }
     
     updateSessionDisplay(sessionId) {
@@ -452,6 +453,6 @@ class EnhancedMathInterface {
     setLoadingState(loading) {
         this.isLoading = loading;
         this.sendButton.disabled = loading || !this.sessionReady;
-        this.sendButton.innerHTML = loading ? '<span class="loading-dots">processing</span>' : 'execute';
+        this.sendButton.innerHTML = loading ? '<span class="loading-dots">PROCESSING</span>' : 'EXECUTE';
     }
 }

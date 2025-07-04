@@ -1,4 +1,6 @@
-// Local Storage Conversation Management
+
+
+// ===== LOCAL STORAGE CONVERSATION MANAGEMENT =====
 function saveConversationToStorage() {
     try {
         const messages = [];
@@ -39,9 +41,7 @@ function loadConversationFromStorage() {
         }
         
         const conversationArea = document.getElementById('conversation');
-        if (!conversationArea) {
-            return false;
-        }
+        if (!conversationArea) return false;
         
         // Clear existing conversation
         conversationArea.innerHTML = '';
@@ -54,13 +54,12 @@ function loadConversationFromStorage() {
         // Restore session ID if available
         if (window.mathInterface && conversationData.sessionId) {
             window.mathInterface.sessionId = conversationData.sessionId;
-            // Also save it as current session
             saveToLocalStorage('current_session_id', conversationData.sessionId);
             updateSessionDisplay(conversationData.sessionId);
         }
         
         console.log(`✓ Restored conversation with ${conversationData.messages.length} messages`);
-        showNotification(`Restored ${conversationData.messages.length} messages from previous session`, 'success');
+        showNotification(`Restored ${conversationData.messages.length} messages`, 'success');
         
         return true;
     } catch (error) {
@@ -111,8 +110,6 @@ function updateSessionDisplay(sessionId) {
 function clearStoredConversation() {
     try {
         localStorage.removeItem('math_conversation');
-        // Don't clear session_start_time or current_session_id here
-        // Those should persist across conversation clears
         console.log('✓ Stored conversation cleared');
         return true;
     } catch (error) {
@@ -121,24 +118,9 @@ function clearStoredConversation() {
     }
 }
 
-function clearAllStoredData() {
-    try {
-        localStorage.removeItem('math_conversation');
-        localStorage.removeItem('session_start_time');
-        localStorage.removeItem('current_session_id');
-        console.log('✓ All stored data cleared');
-        return true;
-    } catch (error) {
-        console.error('Failed to clear all stored data:', error);
-        return false;
-    }
-}
-
 function getStoredConversationInfo() {
     const conversationData = loadFromLocalStorage('math_conversation', null);
-    if (!conversationData) {
-        return null;
-    }
+    if (!conversationData) return null;
     
     return {
         messageCount: conversationData.messages ? conversationData.messages.length : 0,
@@ -148,7 +130,7 @@ function getStoredConversationInfo() {
     };
 }
 
-// Auto-save functionality
+// ===== AUTO-SAVE FUNCTIONALITY =====
 let autoSaveTimeout = null;
 
 function scheduleAutoSave() {
@@ -183,46 +165,7 @@ function enableAutoSave() {
     }, 30000);
 }
 
-// Storage management utilities
-function getStorageUsage() {
-    try {
-        let totalSize = 0;
-        for (let key in localStorage) {
-            if (localStorage.hasOwnProperty(key)) {
-                totalSize += localStorage[key].length + key.length;
-            }
-        }
-        return {
-            totalBytes: totalSize,
-            totalKB: Math.round(totalSize / 1024 * 100) / 100,
-            totalMB: Math.round(totalSize / (1024 * 1024) * 100) / 100
-        };
-    } catch (error) {
-        return null;
-    }
-}
-
-function cleanupOldConversations() {
-    try {
-        const conversationData = loadFromLocalStorage('math_conversation', null);
-        if (conversationData && conversationData.lastSaved) {
-            const lastSaved = new Date(conversationData.lastSaved);
-            const daysSinceLastSave = (Date.now() - lastSaved.getTime()) / (1000 * 60 * 60 * 24);
-            
-            if (daysSinceLastSave > 30) {
-                clearStoredConversation();
-                console.log('✓ Cleaned up old conversation data');
-                return true;
-            }
-        }
-        return false;
-    } catch (error) {
-        console.error('Failed to cleanup old conversations:', error);
-        return false;
-    }
-}
-
-// Theme management
+// ===== THEME MANAGEMENT =====
 function toggleTheme() {
     const currentTheme = document.documentElement.getAttribute('data-theme');
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
@@ -231,31 +174,28 @@ function toggleTheme() {
     
     const themeIcon = document.querySelector('.theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+        themeIcon.textContent = newTheme === 'dark' ? 'LIGHT' : 'DARK';
     }
     
     saveToLocalStorage('theme', newTheme);
 }
 
 function initializeTheme() {
-    const savedTheme = loadFromLocalStorage('theme', 'light');
+    const savedTheme = loadFromLocalStorage('theme', 'dark'); // Default to dark for 8-bit theme
     document.documentElement.setAttribute('data-theme', savedTheme);
     
     const themeIcon = document.querySelector('.theme-icon');
     if (themeIcon) {
-        themeIcon.textContent = savedTheme === 'dark' ? '☀️' : '🌙';
+        themeIcon.textContent = savedTheme === 'dark' ? 'LIGHT' : 'DARK';
     }
 }
 
-// Session Timestamp Functionality
+// ===== SESSION TIMESTAMP =====
 function updateSessionTimestamp(timestamp = new Date()) {
     const sessionDisplay = document.getElementById('session-display');
     if (!sessionDisplay) return;
     
-    // Store the session start time
     saveToLocalStorage('session_start_time', timestamp.toISOString());
-    
-    // Update the display
     updateSessionDisplayWithTime();
 }
 
@@ -265,7 +205,7 @@ function updateSessionDisplayWithTime() {
     
     const sessionStartTime = loadFromLocalStorage('session_start_time', null);
     if (!sessionStartTime) {
-        sessionDisplay.textContent = 'ACTIVE';
+        sessionDisplay.innerHTML = '<div class="session-id">ACTIVE</div><div class="session-time">ready</div>';
         return;
     }
     
@@ -273,7 +213,6 @@ function updateSessionDisplayWithTime() {
     const now = new Date();
     const duration = now - startTime;
     
-    // Format duration
     const minutes = Math.floor(duration / 60000);
     const hours = Math.floor(minutes / 60);
     
@@ -286,18 +225,16 @@ function updateSessionDisplayWithTime() {
         timeText = 'now';
     }
     
-    // Get session ID if available
     const sessionId = window.mathInterface ? window.mathInterface.sessionId : null;
     const sessionText = sessionId ? sessionId.slice(0, 8).toUpperCase() : 'ACTIVE';
     
     sessionDisplay.innerHTML = `
         <div class="session-id">${sessionText}</div>
-        <div class="session-time" title="Session started ${startTime.toLocaleString()}">${timeText}</div>
+        <div class="session-time">${timeText}</div>
     `;
 }
 
 function initializeSessionTimestamp() {
-    // Set initial timestamp if not exists
     const sessionStartTime = loadFromLocalStorage('session_start_time', null);
     if (!sessionStartTime) {
         updateSessionTimestamp();
@@ -305,22 +242,22 @@ function initializeSessionTimestamp() {
         updateSessionDisplayWithTime();
     }
     
-    // Update every minute
     setInterval(updateSessionDisplayWithTime, 60000);
 }
 
-// Conversation management
+// ===== CONVERSATION MANAGEMENT =====
 function copyConversation() {
     const messages = document.querySelectorAll('.message');
-    let conversationText = 'Mathematical Conversation\n\n';
+    let conversationText = 'AI MATH TEACHER - CONVERSATION LOG\n';
+    conversationText += '=====================================\n\n';
     
     messages.forEach(message => {
         const isUser = message.classList.contains('message-user');
         const content = message.querySelector('.content');
         if (content) {
-            const role = isUser ? 'Student' : 'Teacher';
+            const role = isUser ? 'USER' : 'AI';
             const text = content.textContent.trim();
-            conversationText += `${role}: ${text}\n\n`;
+            conversationText += `[${role}]: ${text}\n\n`;
         }
     });
     
@@ -334,12 +271,10 @@ function copyConversation() {
 }
 
 function clearConversation() {
-    if (confirm('Clear this conversation? This action cannot be undone.')) {
+    if (confirm('CLEAR CONVERSATION? THIS ACTION CANNOT BE UNDONE.')) {
         if (window.mathInterface && typeof window.mathInterface.clearConversation === 'function') {
-            // Use the enhanced interface method
             window.mathInterface.clearConversation();
         } else {
-            // Fallback to manual clearing
             resetConversationUI();
             showNotification('Conversation cleared', 'success');
         }
@@ -360,47 +295,11 @@ function resetConversationUI() {
         `;
     }
     
-    // Clear stored conversation but keep session info
     clearStoredConversation();
-    
-    // Reset session timestamp
     updateSessionTimestamp();
 }
 
-// Button Feedback Functions
-function addButtonFeedback(button, callback) {
-    button.addEventListener('click', (e) => {
-        // Add clicked state
-        button.classList.add('clicked');
-        
-        // Create ripple effect
-        const ripple = document.createElement('span');
-        const rect = button.getBoundingClientRect();
-        const size = Math.max(rect.width, rect.height);
-        const x = e.clientX - rect.left - size / 2;
-        const y = e.clientY - rect.top - size / 2;
-        
-        ripple.className = 'btn-ripple';
-        ripple.style.width = ripple.style.height = size + 'px';
-        ripple.style.left = x + 'px';
-        ripple.style.top = y + 'px';
-        
-        button.appendChild(ripple);
-        
-        // Execute callback
-        if (callback) callback();
-        
-        // Remove effects after animation
-        setTimeout(() => {
-            button.classList.remove('clicked');
-            if (ripple.parentNode) {
-                ripple.remove();
-            }
-        }, 300);
-    });
-}
-
-// Symbol and Template Palette Management
+// ===== PALETTE MANAGEMENT =====
 function initializePalettes() {
     const symbolsBtn = document.getElementById('symbols-btn');
     const templatesBtn = document.getElementById('templates-btn');
@@ -410,14 +309,14 @@ function initializePalettes() {
     const closeTemplates = document.getElementById('close-templates');
     
     if (symbolsBtn && symbolPalette) {
-        addButtonFeedback(symbolsBtn, () => {
+        symbolsBtn.addEventListener('click', () => {
             templatePalette.classList.add('hidden');
             symbolPalette.classList.toggle('hidden');
         });
     }
     
     if (templatesBtn && templatePalette) {
-        addButtonFeedback(templatesBtn, () => {
+        templatesBtn.addEventListener('click', () => {
             symbolPalette.classList.add('hidden');
             templatePalette.classList.toggle('hidden');
         });
@@ -435,36 +334,32 @@ function initializePalettes() {
         });
     }
     
+    // Symbol button handlers
     const symbolBtns = document.querySelectorAll('.symbol-btn');
     symbolBtns.forEach(btn => {
-        addButtonFeedback(btn, () => {
+        btn.addEventListener('click', () => {
             const symbol = btn.getAttribute('data-symbol');
             insertSymbolAtCursor(symbol);
             symbolPalette.classList.add('hidden');
         });
     });
     
+    // Template button handlers
     const templateBtns = document.querySelectorAll('.template-btn');
     templateBtns.forEach(btn => {
-        addButtonFeedback(btn, () => {
+        btn.addEventListener('click', () => {
             const template = btn.getAttribute('data-template');
             insertTemplateText(template);
             templatePalette.classList.add('hidden');
         });
     });
     
+    // Close on outside click
     document.addEventListener('click', (e) => {
         if (!symbolPalette.contains(e.target) && !symbolsBtn.contains(e.target)) {
             symbolPalette.classList.add('hidden');
         }
         if (!templatePalette.contains(e.target) && !templatesBtn.contains(e.target)) {
-            templatePalette.classList.add('hidden');
-        }
-    });
-    
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            symbolPalette.classList.add('hidden');
             templatePalette.classList.add('hidden');
         }
     });
@@ -479,7 +374,6 @@ function insertSymbolAtCursor(symbol) {
     input.value = text.substring(0, start) + symbol + text.substring(end);
     input.focus();
     input.setSelectionRange(start + symbol.length, start + symbol.length);
-    
     input.dispatchEvent(new Event('input'));
 }
 
@@ -487,12 +381,11 @@ function insertTemplateText(template) {
     const input = document.getElementById('message-input');
     input.value = template;
     input.focus();
-    
     input.setSelectionRange(template.length, template.length);
     input.dispatchEvent(new Event('input'));
 }
 
-// Message History Navigation System
+// ===== MESSAGE HISTORY NAVIGATION =====
 class MessageHistory {
     constructor() {
         this.history = this.loadHistory();
@@ -530,7 +423,6 @@ class MessageHistory {
         if (this.currentIndex < this.history.length - 1) {
             this.currentIndex++;
             input.value = this.history[this.currentIndex];
-            
             input.dispatchEvent(new Event('input'));
             
             setTimeout(() => {
@@ -539,7 +431,7 @@ class MessageHistory {
         }
     }
 
-    navigateDown(currentInputValue = '') {
+    navigateDown() {
         const input = document.getElementById('message-input');
         if (!input) return;
 
@@ -577,13 +469,6 @@ class MessageHistory {
             currentIndex: this.currentIndex
         };
     }
-
-    clearHistory() {
-        this.history = [];
-        this.currentIndex = -1;
-        this.tempMessage = '';
-        localStorage.removeItem('message_history');
-    }
 }
 
 let messageHistory = null;
@@ -592,10 +477,7 @@ function initializeMessageHistory() {
     messageHistory = new MessageHistory();
     
     const messageInput = document.getElementById('message-input');
-    if (!messageInput) {
-        console.warn('Message input not found for history initialization');
-        return;
-    }
+    if (!messageInput) return;
 
     messageInput.addEventListener('keydown', (e) => {
         if (e.key === 'ArrowUp') {
@@ -603,7 +485,7 @@ function initializeMessageHistory() {
             messageHistory.navigateUp(messageInput.value);
         } else if (e.key === 'ArrowDown') {
             e.preventDefault();
-            messageHistory.navigateDown(messageInput.value);
+            messageHistory.navigateDown();
         } else if (e.key === 'Escape') {
             messageHistory.resetNavigation();
             messageInput.value = '';
@@ -616,8 +498,6 @@ function initializeMessageHistory() {
             messageHistory.resetNavigation();
         }
     });
-
-    console.log('✓ Message history navigation initialized');
 }
 
 function addToMessageHistory(message) {
@@ -626,46 +506,42 @@ function addToMessageHistory(message) {
     }
 }
 
-//Error Messages
+// ===== ERROR HANDLING =====
 function getErrorMessage(error, context = '') {
     const errorMsg = error.message || error.toString();
     
-    // Network-related errors
     if (error.name === 'TypeError' && errorMsg.includes('fetch')) {
-        return "Can't connect to the server right now. Check your internet connection.";
+        return "CONNECTION ERROR: Can't reach server. Check network.";
     }
     
     if (errorMsg.includes('404')) {
-        return "Server's not responding. Try again in a moment.";
+        return "SERVER ERROR: Service unavailable. Try again.";
     }
     
     if (errorMsg.includes('500') || errorMsg.includes('502') || errorMsg.includes('503')) {
-        return "Server's having issues. Give it a minute and try again.";
+        return "SERVER ERROR: Internal failure. Retry in a moment.";
     }
     
     if (errorMsg.includes('timeout')) {
-        return "That's taking too long. Try asking your question again.";
+        return "TIMEOUT ERROR: Request took too long. Try again.";
     }
     
-    // API quota/rate limiting
     if (errorMsg.toLowerCase().includes('quota') || errorMsg.toLowerCase().includes('limit')) {
-        return "API is overloaded right now. Wait a few minutes before trying again.";
+        return "API LIMIT: Service overloaded. Wait before retrying.";
     }
     
-    // Gemini-specific errors
     if (errorMsg.includes('SAFETY')) {
-        return "Your question triggered a safety filter. Try rephrasing it.";
+        return "SAFETY FILTER: Question triggered content filter. Rephrase.";
     }
     
     if (errorMsg.includes('RECITATION')) {
-        return "Can't answer that specific question. Try asking it differently.";
+        return "RECITATION FILTER: Cannot answer specific query. Try different approach.";
     }
     
-    // Generic fallback
-    return "Something went wrong. Try your question again.";
+    return "SYSTEM ERROR: Unknown failure. Retry operation.";
 }
 
-// Notification system
+// ===== NOTIFICATION SYSTEM =====
 function showNotification(message, type = 'info') {
     const existingNotification = document.querySelector('.notification');
     if (existingNotification) {
@@ -674,22 +550,21 @@ function showNotification(message, type = 'info') {
     
     const notification = document.createElement('div');
     notification.className = `notification notification-${type}`;
-    notification.textContent = message;
+    notification.textContent = message.toUpperCase();
     
     Object.assign(notification.style, {
         position: 'fixed',
         top: '20px',
         right: '20px',
         padding: '12px 20px',
-        borderRadius: '6px',
         color: 'var(--text-primary)',
-        fontFamily: 'Inter, sans-serif',
-        fontSize: '13px',
-        fontWeight: '500',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px',
+        fontWeight: '700',
+        textTransform: 'uppercase',
+        letterSpacing: '1px',
         zIndex: '1000',
-        boxShadow: '0 4px 12px var(--shadow)',
-        backdropFilter: 'blur(10px)',
-        border: '1px solid var(--border-bright)',
+        border: '2px solid var(--accent)',
         maxWidth: '300px',
         wordWrap: 'break-word'
     });
@@ -697,53 +572,46 @@ function showNotification(message, type = 'info') {
     switch (type) {
         case 'success':
             notification.style.background = 'var(--success)';
-            notification.style.color = 'white';
+            notification.style.color = 'var(--bg-primary)';
+            notification.style.borderColor = 'var(--success)';
             break;
         case 'error':
             notification.style.background = 'var(--error)';
-            notification.style.color = 'white';
+            notification.style.color = 'var(--white)';
+            notification.style.borderColor = 'var(--error)';
             break;
         default:
-            notification.style.background = 'var(--card-bg)';
-            notification.style.color = 'var(--text-primary)';
+            notification.style.background = 'var(--bg-primary)';
+            notification.style.color = 'var(--accent)';
+            notification.style.borderColor = 'var(--accent)';
     }
     
     document.body.appendChild(notification);
     
-    notification.style.transform = 'translateX(100%)';
-    notification.style.transition = 'transform 0.3s ease';
-    
     setTimeout(() => {
-        notification.style.transform = 'translateX(0)';
-    }, 10);
-    
-    setTimeout(() => {
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.remove();
-            }
-        }, 300);
+        if (notification.parentNode) {
+            notification.remove();
+        }
     }, 3000);
 }
 
 function showHelp() {
     const helpMessages = [
-        "Explain quadratic equations",
+        "Explain quadratic equations step by step",
         "Help me solve x² + 5x + 6 = 0",
-        "Graph f(x) = x² - 4x + 3",
+        "Graph f(x) = x² - 4x + 3 from -5 to 5",
         "Give me practice problems for derivatives",
         "What's the difference between mean and median?",
-        "How do I find the limit of this function?",
-        "Show me how to integrate by parts",
-        "Explain the chain rule with examples"
+        "How do I find the limit of sin(x)/x as x approaches 0?",
+        "Show me how to integrate by parts with examples",
+        "Explain the chain rule with step-by-step examples"
     ];
     
     const randomMessage = helpMessages[Math.floor(Math.random() * helpMessages.length)];
     document.getElementById('message-input').value = randomMessage;
 }
 
-// Status Indicator Functions
+// ===== STATUS INDICATORS =====
 function updateConnectionStatus(status) {
     const indicator = document.querySelector('.status-indicator');
     if (!indicator) return;
@@ -754,11 +622,7 @@ function updateConnectionStatus(status) {
 
 function showTypingIndicator() {
     const conversationArea = document.getElementById('conversation');
-    if (!conversationArea) return;
-    
-    if (document.querySelector('.typing-indicator')) {
-        return;
-    }
+    if (!conversationArea || document.querySelector('.typing-indicator')) return;
     
     const typingGroup = document.createElement('div');
     typingGroup.className = 'message-group typing-indicator';
@@ -798,8 +662,8 @@ function hideTypingIndicator() {
 function showLoadingState() {
     const sendButton = document.getElementById('send-button');
     if (sendButton) {
-        sendButton.classList.add('loading');
         sendButton.disabled = true;
+        sendButton.innerHTML = 'PROCESSING';
     }
     
     return showTypingIndicator;
@@ -808,15 +672,14 @@ function showLoadingState() {
 function hideLoadingState() {
     const sendButton = document.getElementById('send-button');
     if (sendButton) {
-        sendButton.classList.remove('loading');
         sendButton.disabled = false;
-        sendButton.innerHTML = 'execute';
+        sendButton.innerHTML = 'EXECUTE';
     }
     
     hideTypingIndicator();
 }
 
-// Enhanced scroll utility with user scroll detection
+// ===== SCROLL MANAGEMENT =====
 class ScrollManager {
     constructor(container) {
         this.container = container;
@@ -831,18 +694,16 @@ class ScrollManager {
     
     initializeScrollTracking() {
         this.container.addEventListener('scroll', () => {
-            // User initiated scroll
             if (!this.autoScrolling) {
                 this.userScrolling = true;
                 clearTimeout(this.scrollTimeout);
                 
                 this.scrollTimeout = setTimeout(() => {
                     this.userScrolling = false;
-                }, 1000); // Reset after 1 second of no scrolling
+                }, 1000);
             }
         });
         
-        // Reset user scrolling when they reach the bottom
         this.container.addEventListener('scroll', () => {
             const isAtBottom = this.container.scrollTop + this.container.clientHeight >= this.container.scrollHeight - 50;
             if (isAtBottom) {
@@ -854,49 +715,22 @@ class ScrollManager {
     scrollToBottom(force = false) {
         if (!this.container) return;
         
-        // Don't auto-scroll if user is actively scrolling (unless forced)
-        if (this.userScrolling && !force) {
-            return;
-        }
+        if (this.userScrolling && !force) return;
         
         this.autoScrolling = true;
         
         this.container.scrollTo({
             top: this.container.scrollHeight,
-            behavior: 'smooth'
+            behavior: 'auto' // Remove smooth scrolling for 8-bit feel
         });
         
         setTimeout(() => {
             this.autoScrolling = false;
-        }, 500);
-    }
-    
-    ensureVisible(element) {
-        if (!element || !this.container) return;
-        
-        const containerRect = this.container.getBoundingClientRect();
-        const elementRect = element.getBoundingClientRect();
-        
-        const isVisible = (
-            elementRect.top >= containerRect.top &&
-            elementRect.bottom <= containerRect.bottom
-        );
-        
-        if (!isVisible) {
-            this.autoScrolling = true;
-            element.scrollIntoView({
-                behavior: 'smooth',
-                block: 'nearest'
-            });
-            
-            setTimeout(() => {
-                this.autoScrolling = false;
-            }, 500);
-        }
+        }, 100);
     }
 }
 
-// Math rendering utilities
+// ===== MATH RENDERING =====
 function renderMath(element) {
     if (window.MathJax && window.MathJax.typesetPromise) {
         window.MathJax.typesetPromise([element]).catch(console.warn);
@@ -911,60 +745,34 @@ function renderMathLive(element) {
     }
 }
 
-// Scroll utilities
-function scrollToBottom(container, smooth = true) {
+// ===== UTILITY FUNCTIONS =====
+function scrollToBottom(container, smooth = false) {
     if (!container) return;
     
     const scrollOptions = {
         top: container.scrollHeight,
-        behavior: smooth ? 'smooth' : 'auto'
+        behavior: smooth ? 'smooth' : 'auto' // Instant for 8-bit feel
     };
     
     container.scrollTo(scrollOptions);
 }
 
-// Delay utility for typing animation
 function getTypingDelay(char) {
-    let delay = 25;
+    // Faster, more consistent typing for retro feel
+    let delay = 15;
     if (char === '.' || char === '?' || char === '!') {
-        delay = 400;
-    } else if (char === ',' || char === ';') {
-        delay = 200;
-    } else if (char === ' ') {
-        delay = 50;
-    } else if (char === '\n') {
         delay = 100;
+    } else if (char === ',' || char === ';') {
+        delay = 50;
+    } else if (char === ' ') {
+        delay = 20;
+    } else if (char === '\n') {
+        delay = 30;
     }
     
-    return delay + Math.random() * 15;
+    return delay + Math.random() * 5; // Less randomness for consistent feel
 }
 
-// Parse mathematical expressions for graphing
-function parseMathExpression(expression, xVal) {
-    let expr = expression.replace(/f\(x\)\s*=\s*/, '');
-    
-    expr = expr.replace(/\^/g, '**');
-    expr = expr.replace(/(\d+)\s*\*\s*\*/g, 'Math.pow($1,');
-    expr = expr.replace(/x\*\*(\d+)/g, 'Math.pow(x, $1)');
-    expr = expr.replace(/x\^(\d+)/g, 'Math.pow(x, $1)');
-    expr = expr.replace(/\bx\b/g, `(${xVal})`);
-    
-    expr = expr.replace(/\bsin\b/g, 'Math.sin');
-    expr = expr.replace(/\bcos\b/g, 'Math.cos');
-    expr = expr.replace(/\btan\b/g, 'Math.tan');
-    expr = expr.replace(/\blog\b/g, 'Math.log10');
-    expr = expr.replace(/\bln\b/g, 'Math.log');
-    expr = expr.replace(/\bsqrt\b/g, 'Math.sqrt');
-    expr = expr.replace(/\babs\b/g, 'Math.abs');
-    expr = expr.replace(/\bexp\b/g, 'Math.exp');
-    
-    expr = expr.replace(/\bpi\b/g, 'Math.PI');
-    expr = expr.replace(/\be\b/g, 'Math.E');
-    
-    return expr;
-}
-
-// Copy text to clipboard
 async function copyToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
@@ -990,7 +798,6 @@ async function copyToClipboard(text) {
     }
 }
 
-// Local storage helpers
 function saveToLocalStorage(key, data) {
     try {
         localStorage.setItem(key, JSON.stringify(data));
@@ -1008,5 +815,43 @@ function loadFromLocalStorage(key, defaultValue = null) {
     } catch (error) {
         console.warn('Failed to load from localStorage:', error);
         return defaultValue;
+    }
+}
+
+function getStorageUsage() {
+    try {
+        let totalSize = 0;
+        for (let key in localStorage) {
+            if (localStorage.hasOwnProperty(key)) {
+                totalSize += localStorage[key].length + key.length;
+            }
+        }
+        return {
+            totalBytes: totalSize,
+            totalKB: Math.round(totalSize / 1024 * 100) / 100,
+            totalMB: Math.round(totalSize / (1024 * 1024) * 100) / 100
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function cleanupOldConversations() {
+    try {
+        const conversationData = loadFromLocalStorage('math_conversation', null);
+        if (conversationData && conversationData.lastSaved) {
+            const lastSaved = new Date(conversationData.lastSaved);
+            const daysSinceLastSave = (Date.now() - lastSaved.getTime()) / (1000 * 60 * 60 * 24);
+            
+            if (daysSinceLastSave > 30) {
+                clearStoredConversation();
+                console.log('✓ Cleaned up old conversation data');
+                return true;
+            }
+        }
+        return false;
+    } catch (error) {
+        console.error('Failed to cleanup old conversations:', error);
+        return false;
     }
 }

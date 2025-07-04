@@ -479,32 +479,35 @@ class ArtifactRenderer {
                 type: 'scatter',
                 mode: 'lines',
                 line: {
-                    color: isDarkMode ? '#4fc3f7' : '#0ea5e9',
-                    width: 3
+                    color: isDarkMode ? '#00ff00' : '#000000',
+                    width: 2
                 },
                 name: content.function
             };
             
             const layout = {
                 paper_bgcolor: 'transparent',
-                plot_bgcolor: isDarkMode ? 'rgba(26, 32, 52, 0.9)' : 'rgba(248, 250, 252, 0.9)',
+                plot_bgcolor: isDarkMode ? '#000000' : '#ffffff',
                 font: {
-                    family: 'Inter',
+                    family: 'JetBrains Mono, monospace',
                     size: 12,
-                    color: isDarkMode ? '#e8eaed' : '#1a202c'
+                    color: isDarkMode ? '#00ff00' : '#000000'
                 },
+
                 xaxis: {
-                    gridcolor: isDarkMode ? '#2d3748' : '#e2e8f0',
-                    zerolinecolor: isDarkMode ? '#4fc3f7' : '#0ea5e9',
-                    color: isDarkMode ? '#e8eaed' : '#1a202c',
+                    gridcolor: isDarkMode ? '#333333' : '#cccccc',
+                    zerolinecolor: isDarkMode ? '#00ff00' : '#000000',
+                    color: isDarkMode ? '#00ff00' : '#000000',
                     title: content.axes_labels?.x || 'x'
                 },
+
                 yaxis: {
-                    gridcolor: isDarkMode ? '#2d3748' : '#e2e8f0',
-                    zerolinecolor: isDarkMode ? '#4fc3f7' : '#0ea5e9',
-                    color: isDarkMode ? '#e8eaed' : '#1a202c',
+                    gridcolor: isDarkMode ? '#333333' : '#cccccc',
+                    zerolinecolor: isDarkMode ? '#00ff00' : '#000000',
+                    color: isDarkMode ? '#00ff00' : '#000000',
                     title: content.axes_labels?.y || 'y'
                 },
+
                 title: {
                     text: content.title || '',
                     font: { color: isDarkMode ? '#e8eaed' : '#1a202c' }
