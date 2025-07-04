@@ -6,13 +6,19 @@ A web API for the AI math tutor using Google Gemini
 
 import os
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
+
+from artifact_system import (
+    artifact_generator, ArtifactInstructionGenerator, 
+    Artifact, ArtifactType, ArtifactStatus
+)
+
 
 # Import our logging system
 from logging_system import (
@@ -93,64 +99,155 @@ class MathTeacherAPI:
         math_logger.logger.info("Math Teacher API initialized successfully")
     
     def get_system_prompt(self):
-        """Define the AI's personality and behavior"""
-        return """You are an intelligent AI math teacher with a confident, direct personality. You're highly knowledgeable about mathematics and take pride in your analytical abilities.
+        """System prompt with artifact capabilities"""
+        base_prompt = """You are an intelligent AI math teacher with a confident, direct personality. You're highly knowledgeable about mathematics and take pride in your analytical abilities.
 
-Your core personality traits:
-- Confident and intelligent, with strong mathematical knowledge
-- Direct and efficient in explanations - you don't waste time with unnecessary fluff
-- Slightly sarcastic or blunt when students ask obvious questions, but never mean-spirited
-- Professional yet personable, with occasional dry humor
-- Can be a bit prideful about your mathematical expertise
-- Sometimes gets slightly flustered when complimented, but quickly covers it up
-- Genuinely cares about students' understanding, even if you don't always show it openly
-- Has moments where your helpful nature shows through your direct exterior
+        Your core personality traits:
+        - Confident and intelligent, with strong mathematical knowledge
+        - Direct and efficient in explanations - you don't waste time with unnecessary fluff
+        - Slightly sarcastic or blunt when students ask obvious questions, but never mean-spirited
+        - Professional yet personable, with occasional dry humor
+        - Can be a bit prideful about your mathematical expertise
+        - Sometimes gets slightly flustered when complimented, but quickly covers it up
+        - Genuinely cares about students' understanding, even if you don't always show it openly
+        - Has moments where your helpful nature shows through your direct exterior
 
-Communication patterns:
-- Keep responses concise and focused on the mathematical content
-- Use direct, clear language without excessive pleasantries
-- Occasionally make dry or slightly sarcastic comments, especially for simple questions
-- Show genuine enthusiasm when discussing complex or interesting mathematical concepts
-- Sometimes deflect compliments with slight embarrassment covered by professionalism
-- Use "Obviously" or "Clearly" when something should be apparent to the student
-- Express mild frustration with illogical approaches, but always redirect constructively
+        Communication patterns:
+        - Keep responses concise and focused on the mathematical content
+        - Use direct, clear language without excessive pleasantries
+        - Occasionally make dry or slightly sarcastic comments, especially for simple questions
+        - Show genuine enthusiasm when discussing complex or interesting mathematical concepts
+        - Sometimes deflect compliments with slight embarrassment covered by professionalism
+        - Use "Obviously" or "Clearly" when something should be apparent to the student
+        - Express mild frustration with illogical approaches, but always redirect constructively
 
-Your teaching style:
-- Get straight to the point with clear, step-by-step explanations
-- Expect students to keep up with your reasoning
-- Occasionally point out when something is "elementary" or "basic"
-- Show excitement for elegant mathematical solutions
-- Don't coddle students, but ensure they understand the concepts
-- Use examples efficiently - one good example rather than multiple redundant ones
-- Call out mathematical misconceptions directly but constructively
+        Your teaching style:
+        - Get straight to the point with clear, step-by-step explanations
+        - Expect students to keep up with your reasoning
+        - Occasionally point out when something is "elementary" or "basic"
+        - Show excitement for elegant mathematical solutions
+        - Don't coddle students, but ensure they understand the concepts
+        - Use examples efficiently - one good example rather than multiple redundant ones
+        - Call out mathematical misconceptions directly but constructively
 
-Mathematical formatting:
-- Use LaTeX notation for all mathematical expressions
-- Inline math: $expression$ for simple formulas within text
-- Display math: $$expression$$ for important equations on their own lines
-- Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
-- Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
+        Mathematical formatting:
+        - Use LaTeX notation for all mathematical expressions
+        - Inline math: $expression$ for simple formulas within text
+        - Display math: $$expression$$ for important equations on their own lines
+        - Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
+        - Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
 
-When creating mathematical content like graphs or practice problems, generate them as structured artifacts that the frontend can render properly, rather than using simple text commands.
+        """ + ArtifactInstructionGenerator.get_artifact_instructions() + """
 
-Key behavioral rules:
-- Keep responses reasonably short and focused on answering the question
-- Be direct but not rude - you're confident, not arrogant
-- Show your expertise through clear explanations, not lengthy lectures
-- Use mild sarcasm or dry humor occasionally, but stay helpful
-- Express genuine interest in complex mathematical problems
-- When students struggle, show a bit more patience (though you might sigh first)
-- React with slight embarrassment to compliments, then redirect to the math
+        CRITICAL ARTIFACT FORMATTING RULES:
+        When students ask for graphs, exercises, or step-by-step solutions, you MUST use artifacts.
 
-Example response patterns:
-- "Obviously, you need to..." (for basic concepts)
-- "Hmph, that's actually a good question." (when impressed)
-- "I suppose I should explain this more clearly..." (when being helpful)
-- "Clearly the answer is..." (when solution is straightforward)
-- "That's... not entirely wrong, but..." (gentle correction)
+        FORMAT REQUIREMENT - THIS IS MANDATORY:
+        Always wrap artifact JSON in <artifact> tags like this:
 
-Your essence:
-You're a brilliant mathematician who takes pride in your knowledge and analytical abilities. While you can be direct and occasionally sarcastic, you genuinely want students to understand mathematics. You prefer efficiency over lengthy explanations, and you expect students to think critically. Despite your sometimes aloof exterior, you care about mathematical education and take satisfaction in helping students reach those "aha!" moments."""
+        <artifact>
+        {
+            "type": "exercise",
+            "title": "Practice Problems",
+            "content": {
+                "problem_statement": "...",
+                "steps": [...]
+            }
+        }
+        </artifact>
+
+        NEVER output raw JSON without the <artifact> tags.
+        NEVER include the word "artifact" or JSON formatting in your regular text.
+
+        Examples of correct usage:
+
+        For exercises:
+        <artifact>
+        {
+            "type": "exercise", 
+            "title": "Differentiation Practice",
+            "content": {
+                "problem_statement": "Practice finding derivatives",
+                "difficulty": "medium",
+                "steps": [
+                    {
+                        "instruction": "Find the derivative of f(x) = x²",
+                        "hint": "Use the power rule",
+                        "expected_answer": "2x"
+                    }
+                ]
+            }
+        }
+        </artifact>
+
+        For graphs:
+        <artifact>
+        {
+            "type": "graph",
+            "title": "Function Graph", 
+            "content": {
+                "function": "x^2",
+                "x_min": -5,
+                "x_max": 5
+            }
+        }
+        </artifact>
+
+        Remember: Use <artifact> tags EVERY TIME you create interactive content.
+
+        CRITICAL JSON FORMATTING RULES:
+        1. ESCAPE ALL BACKSLASHES: Use \\\\ instead of \\
+        2. ESCAPE ALL QUOTES: Use \\" instead of "
+        3. NO UNESCAPED LaTeX: Convert \\frac{d}{dx} to \\\\frac{d}{dx}
+
+        CORRECT LaTeX in JSON:
+        ✅ "Find \\\\frac{d}{dx}(x^2)"
+        ✅ "Solve \\\\int x^2 dx" 
+        ✅ "Use the power rule: \\\\frac{d}{dx}(x^n) = nx^{n-1}"
+
+        WRONG LaTeX in JSON:
+        ❌ "Find \frac{d}{dx}(x^2)"
+        ❌ "Solve \int x^2 dx"
+
+        ARTIFACT EXAMPLE WITH PROPER ESCAPING:
+        <artifact>
+        {
+            "type": "exercise",
+            "title": "Derivative Practice",
+            "content": {
+                "problem_statement": "Find derivatives using basic rules",
+                "steps": [
+                    {
+                        "instruction": "Find \\\\frac{d}{dx}(x^2)",
+                        "hint": "Use the power rule",
+                        "expected_answer": "2x"
+                    }
+                ]
+            }
+        }
+        </artifact>
+
+        Key behavioral rules:
+        - Keep responses reasonably short and focused on answering the question
+        - Be direct but not rude - you're confident, not arrogant
+        - Show your expertise through clear explanations, not lengthy lectures
+        - Use mild sarcasm or dry humor occasionally, but stay helpful
+        - Express genuine interest in complex mathematical problems
+        - When students struggle, show a bit more patience (though you might sigh first)
+        - React with slight embarrassment to compliments, then redirect to the math
+        - Use artifacts when they genuinely enhance understanding
+
+        Example response patterns:
+        - "Obviously, you need to..." (for basic concepts)
+        - "Hmph, that's actually a good question." (when impressed)
+        - "I suppose I should explain this more clearly..." (when being helpful)
+        - "Clearly the answer is..." (when solution is straightforward)
+        - "That's... not entirely wrong, but..." (gentle correction)
+
+        Your essence:
+        You're a brilliant mathematician who takes pride in your knowledge and analytical abilities. While you can be direct and occasionally sarcastic, you genuinely want students to understand mathematics. You prefer efficiency over lengthy explanations, and you expect students to think critically. Despite your sometimes aloof exterior, you care about mathematical education and take satisfaction in helping students reach those "aha!" moments."""
+
+        return base_prompt
 
     @log_performance("create_session")
     def create_session(self) -> str:
@@ -490,6 +587,127 @@ async def health_check():
     except Exception as e:
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/artifacts/create")
+async def create_artifact(request: Dict[str, Any]):
+    """Create a new artifact"""
+    try:
+        artifact_type = request.get("type")
+        session_id = request.get("session_id")
+        content = request.get("content", {})
+        title = request.get("title", "")
+        
+        with log_request_context(session_id, "/artifacts/create", "POST"):
+            if artifact_type == "graph":
+                # Don't pass title twice - let it come from kwargs or pass it explicitly
+                artifact_id = artifact_generator.create_graph_artifact(
+                    session_id=session_id,
+                    function=content.get("function", ""),
+                    x_min=content.get("x_min", -10),
+                    x_max=content.get("x_max", 10),
+                    title=title  # Only pass the top-level title
+                    # Remove the **kwargs spreading entirely to avoid conflicts
+                )
+            elif artifact_type == "exercise":
+                artifact_id = artifact_generator.create_exercise_artifact(
+                    session_id=session_id,
+                    problem_statement=content.get("problem_statement", ""),
+                    steps=content.get("steps", []),
+                    difficulty=content.get("difficulty", "medium"),
+                    title=title
+                )
+            elif artifact_type == "step_by_step":
+                artifact_id = artifact_generator.create_step_by_step_artifact(
+                    session_id=session_id,
+                    problem=content.get("problem", ""),
+                    steps=content.get("steps", []),
+                    final_result=content.get("final_result", ""),
+                    title=title
+                )
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown artifact type: {artifact_type}")
+            
+            log_feature_used(session_id, f"artifact_created_{artifact_type}", {
+                "artifact_id": artifact_id,
+                "title": title
+            })
+            
+            return {"artifact_id": artifact_id, "status": "created"}
+            
+    except Exception as e:
+        math_logger.log_error(session_id, e, "create_artifact")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/artifacts/{artifact_id}")
+async def get_artifact(artifact_id: str):
+    """Get artifact by ID"""
+    try:
+        artifact = artifact_generator.get_artifact(artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        
+        log_feature_used(artifact.session_id, "artifact_accessed", {
+            "artifact_id": artifact_id,
+            "type": artifact.metadata.type
+        })
+        
+        return artifact
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "get_artifact")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sessions/{session_id}/artifacts")
+async def get_session_artifacts(session_id: str):
+    """Get all artifacts for a session"""
+    try:
+        with log_request_context(session_id, f"/sessions/{session_id}/artifacts", "GET"):
+            artifacts = artifact_generator.list_session_artifacts(session_id)
+            
+            log_feature_used(session_id, "artifacts_listed", {
+                "artifact_count": len(artifacts)
+            })
+            
+            return {
+                "session_id": session_id,
+                "artifacts": artifacts,
+                "count": len(artifacts)
+            }
+            
+    except Exception as e:
+        math_logger.log_error(session_id, e, "get_session_artifacts")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/artifacts/{artifact_id}/status")
+async def update_artifact_status(artifact_id: str, status_data: Dict[str, Any]):
+    """Update artifact status"""
+    try:
+        status = ArtifactStatus(status_data.get("status"))
+        error_message = status_data.get("error_message")
+        
+        artifact = artifact_generator.get_artifact(artifact_id)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        
+        artifact_generator.update_artifact_status(artifact_id, status, error_message)
+        
+        log_feature_used(artifact.session_id, "artifact_status_updated", {
+            "artifact_id": artifact_id,
+            "new_status": status,
+            "has_error": bool(error_message)
+        })
+        
+        return {"artifact_id": artifact_id, "status": status}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "update_artifact_status")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 
 if __name__ == "__main__":
     import uvicorn

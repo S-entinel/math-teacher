@@ -10,6 +10,9 @@ class EnhancedMathInterface {
         this.sendButton = document.getElementById('send-button');
         this.sessionDisplay = document.getElementById('session-display');
         
+        // Initialize artifact renderer
+        this.artifactRenderer = window.artifactRenderer;
+        
         this.initializeEventListeners();
         this.initializeSession();
     }
@@ -210,9 +213,9 @@ class EnhancedMathInterface {
             // Hide loading indicator before streaming
             hideLoadingState();
             
-            // Create response group and start streaming
+            // Create response group and start streaming with artifact processing
             const responseGroup = this.createResponseGroup();
-            await this.streamResponse(responseGroup.querySelector('.content'), data.response);
+            await this.streamResponseWithArtifacts(responseGroup.querySelector('.content'), data.response);
             
         } catch (error) {
             console.error('Error sending message:', error);
@@ -360,7 +363,55 @@ class EnhancedMathInterface {
         return groupElement;
     }
     
+    async streamResponseWithArtifacts(element, text, isError = false) {
+        if (isError) element.classList.add('error');
+        
+        // First, process artifacts and get modified text
+        const processedText = await this.artifactRenderer.processArtifacts(element, text, this.sessionId);
+        
+        // Now stream the processed text
+        element.innerHTML = '';
+        const cursor = document.createElement('span');
+        cursor.className = 'streaming-cursor';
+        cursor.textContent = '_';
+        element.appendChild(cursor);
+        
+        let currentContent = '';
+        
+        // Stream each character with natural timing
+        for (let i = 0; i < processedText.length; i++) {
+            const char = processedText[i];
+            currentContent += char;
+            
+            element.innerHTML = currentContent + '<span class="streaming-cursor">_</span>';
+            
+            renderMathLive(element);
+            
+            // Smart scroll during streaming
+            if (window.conversationScrollManager) {
+                window.conversationScrollManager.scrollToBottom();
+            } else {
+                scrollToBottom(this.conversationArea);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, getTypingDelay(char)));
+        }
+        
+        // Final render without cursor
+        element.innerHTML = currentContent;
+        
+        // Apply artifacts to replace placeholders
+        this.artifactRenderer.applyArtifacts(element);
+        
+        // Render math
+        renderMath(element);
+        
+        // Auto-save after streaming is complete
+        scheduleAutoSave();
+    }
+    
     async streamResponse(element, text, isError = false) {
+        // Fallback for non-artifact responses
         if (isError) element.classList.add('error');
         
         element.innerHTML = '';
@@ -378,14 +429,6 @@ class EnhancedMathInterface {
             
             element.innerHTML = currentContent + '<span class="streaming-cursor">_</span>';
             
-            // Handle special commands during streaming
-            if (currentContent.includes('[GRAPH:') && currentContent.includes(']')) {
-                await this.handleGraphCommand(element, currentContent);
-            }
-            if (currentContent.includes('[PRACTICE:') && currentContent.includes(']')) {
-                await this.handlePracticeCommand(element, currentContent);
-            }
-            
             renderMathLive(element);
             
             // Smart scroll during streaming
@@ -401,16 +444,9 @@ class EnhancedMathInterface {
         // Final render
         element.innerHTML = currentContent;
         renderMath(element);
-        this.handleAllCommands(element, currentContent);
         
         // Auto-save after streaming is complete
         scheduleAutoSave();
-    }
-    
-    async handleAllCommands(element, content) {
-        // Process all remaining commands
-        if (content.includes('[GRAPH:')) await this.handleGraphCommand(element, content);
-        if (content.includes('[PRACTICE:')) await this.handlePracticeCommand(element, content);
     }
     
     setLoadingState(loading) {
