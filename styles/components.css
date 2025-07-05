@@ -44,92 +44,6 @@
     color: var(--bg-primary) !important;
 }
 
-/* Practice Problems */
-.practice-container {
-    margin: var(--space-5) 0;
-    padding: var(--space-5);
-    border: var(--border-thick) solid var(--border);
-    background: var(--bg-secondary);
-    position: relative;
-}
-
-.practice-container::before {
-    content: 'PRACTICE';
-    position: absolute;
-    top: calc(var(--border-thick) * -1);
-    left: var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    font-weight: 700;
-    background: var(--bg-secondary);
-    padding: 0 var(--space-1);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.practice-header {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: var(--space-4);
-    display: flex;
-    justify-content: space-between;
-    font-weight: 700;
-    padding-top: var(--space-5);
-    border-bottom: var(--border-width) solid var(--border);
-    padding-bottom: var(--space-1);
-}
-
-.practice-difficulty {
-    color: var(--text-primary);
-    font-weight: 700;
-    padding: var(--space-1) var(--space-2);
-    border: var(--border-width) solid var(--border);
-    background: var(--bg-primary);
-}
-
-.practice-problem {
-    font-size: var(--font-size-base);
-    color: var(--text-primary);
-    line-height: 1.6;
-    margin-bottom: var(--space-5);
-    font-family: var(--font-mono);
-    padding: var(--space-3);
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-}
-
-.practice-actions {
-    display: flex;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-}
-
-.practice-btn {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-3) var(--space-4);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-}
-
-.practice-btn:hover {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
-
-.practice-btn:active {
-    transform: translate(1px, 1px);
-}
-
 /* Artifact Containers */
 .artifact-container {
     margin: var(--space-6) 0;
@@ -148,11 +62,6 @@
     position: relative;
 }
 
-.artifact-header.completed {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
-
 .artifact-title {
     font-family: var(--font-mono);
     font-size: var(--font-size-base);
@@ -160,16 +69,6 @@
     color: var(--text-primary);
     text-transform: uppercase;
     letter-spacing: 1px;
-}
-
-.artifact-header.completed .artifact-title {
-    color: var(--bg-primary);
-}
-
-.artifact-meta {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
 }
 
 .artifact-actions {
@@ -197,19 +96,6 @@
 
 .artifact-btn:active {
     transform: translate(1px, 1px);
-}
-
-/* Difficulty Badges */
-.difficulty-badge {
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--font-size-xs);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    font-family: var(--font-mono);
-    border: var(--border-width) solid var(--border);
-    background: var(--bg-primary);
-    color: var(--text-primary);
 }
 
 /* Artifact Content */
@@ -291,8 +177,8 @@
     margin: 0;
 }
 
-/* Exercise Artifacts */
-.exercise-artifact {
+/* Step-by-Step Artifacts */
+.step-by-step-artifact {
     border-left: 4px solid var(--text-primary);
 }
 
@@ -305,199 +191,6 @@
     background: var(--bg-secondary);
     border: var(--border-width) solid var(--border);
     font-family: var(--font-mono);
-}
-
-.exercise-steps {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-}
-
-.exercise-step {
-    border: var(--border-width) solid var(--border);
-    background: var(--bg-secondary);
-}
-
-.exercise-step.completed {
-    border-color: var(--text-primary);
-    background: var(--bg-primary);
-}
-
-.exercise-step.completed .step-header {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
-
-.step-header {
-    padding: var(--space-3) var(--space-4);
-    border-bottom: var(--border-width) solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: var(--bg-tertiary);
-}
-
-.step-number {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.step-actions {
-    display: flex;
-    gap: var(--space-2);
-}
-
-.hint-btn {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-1) var(--space-2);
-    font-size: var(--font-size-xs);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    cursor: pointer;
-}
-
-.hint-btn:hover {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
-
-.step-instruction {
-    padding: var(--space-4);
-    color: var(--text-primary);
-    line-height: 1.6;
-    font-family: var(--font-mono);
-}
-
-.step-input {
-    padding: var(--space-4);
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-    background: var(--bg-primary);
-}
-
-.step-answer {
-    flex: 1;
-    background: var(--bg-secondary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-2) var(--space-3);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-}
-
-.step-answer:focus {
-    outline: var(--border-width) solid var(--text-primary);
-    outline-offset: calc(var(--border-width) * -1);
-}
-
-.check-answer-btn {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    border: var(--border-width) solid var(--text-primary);
-    padding: var(--space-2) var(--space-4);
-    font-size: var(--font-size-xs);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-}
-
-.check-answer-btn:hover {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-}
-
-.check-answer-btn:active {
-    transform: translate(1px, 1px);
-}
-
-.step-hint {
-    padding: var(--space-4);
-    background: var(--bg-tertiary);
-    border-top: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-}
-
-.step-feedback {
-    padding: var(--space-3) var(--space-4);
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.step-feedback.correct {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    border-top: var(--border-width) solid var(--text-primary);
-}
-
-.step-feedback.incorrect {
-    background: var(--bg-primary);
-    color: var(--text-primary);
-    border-top: var(--border-width) solid var(--border);
-    border-style: dashed;
-}
-
-.exercise-progress {
-    margin-top: var(--space-6);
-    padding: var(--space-4);
-    background: var(--bg-secondary);
-    border: var(--border-width) solid var(--border);
-}
-
-.progress-bar {
-    width: 100%;
-    height: 12px;
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    margin-bottom: var(--space-2);
-}
-
-.progress-fill {
-    height: 100%;
-    background: var(--text-primary);
-}
-
-.progress-text {
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.completion-message {
-    margin-top: var(--space-4);
-    padding: var(--space-4);
-    background: var(--text-primary);
-    color: var(--bg-primary);
-    text-align: center;
-    font-weight: 700;
-    font-family: var(--font-mono);
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    border: var(--border-width) solid var(--text-primary);
-    animation: blink 2s step-end infinite;
-}
-
-/* Step-by-Step Artifacts */
-.step-by-step-artifact {
-    border-left: 4px solid var(--text-primary);
 }
 
 .solution-steps {
@@ -602,28 +295,12 @@
         gap: var(--space-2);
     }
     
-    .step-input {
-        flex-direction: column;
-        align-items: stretch;
-        gap: var(--space-2);
-    }
-    
     .artifact-header {
         padding: var(--space-3);
     }
     
     .artifact-title {
         font-size: var(--font-size-sm);
-    }
-    
-    .practice-actions {
-        flex-direction: column;
-        gap: var(--space-2);
-    }
-    
-    .practice-btn {
-        width: 100%;
-        text-align: center;
     }
 }
 
@@ -640,8 +317,7 @@
         font-size: var(--font-size-sm);
     }
     
-    .graph-container,
-    .practice-container {
+    .graph-container {
         padding: var(--space-3);
         margin: var(--space-3) 0;
     }

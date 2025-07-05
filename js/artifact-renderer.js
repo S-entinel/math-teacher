@@ -1,5 +1,3 @@
-// Artifact system for frontend rendering
-
 class ArtifactRenderer {
     constructor() {
         this.apiUrl = 'http://localhost:8000';
@@ -7,7 +5,6 @@ class ArtifactRenderer {
         this.renderingQueue = [];
     }
 
-    // Parse artifacts from AI response text
     parseArtifacts(text) {
         const artifactRegex = /<artifact>([\s\S]*?)<\/artifact>/g;
         const artifacts = [];
@@ -28,19 +25,17 @@ class ArtifactRenderer {
         return artifacts;
     }
 
-    // Process artifacts in AI response
     async processArtifacts(element, text, sessionId) {
         const artifacts = this.parseArtifacts(text);
         
         if (artifacts.length === 0) {
-            return text; // No artifacts to process
+            return text;
         }
 
         let processedText = text;
 
         for (const artifact of artifacts) {
             try {
-                // Create artifact on backend
                 const response = await fetch(`${this.apiUrl}/artifacts/create`, {
                     method: 'POST',
                     headers: {
@@ -59,14 +54,11 @@ class ArtifactRenderer {
                 const result = await response.json();
                 const artifactId = result.artifact_id;
 
-                // Replace artifact text with rendered component
                 const artifactElement = this.renderArtifact(artifactId, artifact.data);
                 
-                // Create a placeholder and replace it after text processing
                 const placeholder = `__ARTIFACT_PLACEHOLDER_${artifactId}__`;
                 processedText = processedText.replace(artifact.originalText, placeholder);
                 
-                // Store for later replacement
                 this.renderingQueue.push({
                     placeholder,
                     element: artifactElement,
@@ -75,7 +67,6 @@ class ArtifactRenderer {
 
             } catch (error) {
                 console.error('Failed to create artifact:', error);
-                // Replace with error message
                 processedText = processedText.replace(
                     artifact.originalText, 
                     `[Artifact Error: ${artifact.data.title || 'Unknown'}]`
@@ -86,12 +77,10 @@ class ArtifactRenderer {
         return processedText;
     }
 
-    // Apply rendered artifacts to the DOM
     applyArtifacts(element) {
         for (const item of this.renderingQueue) {
             const textContent = element.innerHTML;
             if (textContent.includes(item.placeholder)) {
-                // Create a container for the artifact
                 const container = document.createElement('div');
                 container.innerHTML = textContent.replace(
                     item.placeholder,
@@ -100,7 +89,6 @@ class ArtifactRenderer {
                 
                 element.innerHTML = container.innerHTML;
                 
-                // Insert the actual artifact element
                 const artifactContainer = element.querySelector(`#artifact-${item.artifactId}`);
                 if (artifactContainer) {
                     artifactContainer.replaceWith(item.element);
@@ -108,11 +96,9 @@ class ArtifactRenderer {
             }
         }
         
-        // Clear the queue
         this.renderingQueue = [];
     }
 
-    // Render specific artifact types
     renderArtifact(artifactId, artifactData) {
         const container = document.createElement('div');
         container.className = 'artifact-container';
@@ -121,8 +107,6 @@ class ArtifactRenderer {
         switch (artifactData.type) {
             case 'graph':
                 return this.renderGraphArtifact(container, artifactData);
-            case 'exercise':
-                return this.renderExerciseArtifact(container, artifactData);
             case 'step_by_step':
                 return this.renderStepByStepArtifact(container, artifactData);
             default:
@@ -131,7 +115,6 @@ class ArtifactRenderer {
         }
     }
 
-    // Render graph artifacts
     renderGraphArtifact(container, data) {
         container.className += ' graph-artifact';
         
@@ -157,67 +140,12 @@ class ArtifactRenderer {
             </div>
         `;
 
-        // Render the actual graph
         this.renderPlotlyGraph(container.querySelector('.graph-container'), content, isDarkMode);
-
-        // Add event listeners
         this.setupGraphControls(container, content);
 
         return container;
     }
 
-    // Render exercise artifacts
-    renderExerciseArtifact(container, data) {
-        container.className += ' exercise-artifact';
-        
-        const content = data.content;
-
-        let stepsHtml = (content.steps || []).map((step, index) => `
-            <div class="exercise-step" data-step="${step.step_number}">
-                <div class="step-header">
-                    <span class="step-number">Step ${step.step_number}</span>
-                    <div class="step-actions">
-                        <button class="hint-btn" data-step="${step.step_number}">💡 Hint</button>
-                    </div>
-                </div>
-                <div class="step-instruction">${step.instruction}</div>
-                <div class="step-input">
-                    <input type="text" class="step-answer" placeholder="Your answer..." />
-                    <button class="check-answer-btn" data-step="${step.step_number}">Check</button>
-                </div>
-                <div class="step-hint hidden">${step.hint || ''}</div>
-                <div class="step-feedback hidden"></div>
-            </div>
-        `).join('');
-
-        container.innerHTML = `
-            <div class="artifact-header">
-                <div class="artifact-title">${data.title || 'Practice Exercise'}</div>
-                <div class="artifact-meta">
-                    <span class="difficulty-badge ${content.difficulty}">${content.difficulty}</span>
-                </div>
-            </div>
-            <div class="artifact-content">
-                <div class="problem-statement">${content.problem_statement}</div>
-                <div class="exercise-steps">
-                    ${stepsHtml}
-                </div>
-                <div class="exercise-progress">
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: 0%"></div>
-                    </div>
-                    <span class="progress-text">0 / ${(content.steps || []).length} steps completed</span>
-                </div>
-            </div>
-        `;
-
-        // Setup exercise interactivity
-        this.setupExerciseControls(container, content);
-
-        return container;
-    }
-
-    // Render step-by-step artifacts
     renderStepByStepArtifact(container, data) {
         container.className += ' step-by-step-artifact';
         
@@ -252,13 +180,11 @@ class ArtifactRenderer {
             </div>
         `;
 
-        // Setup step-by-step animation
         this.setupStepByStepAnimation(container);
 
         return container;
     }
 
-    // Setup graph controls
     setupGraphControls(container, content) {
         const updateBtn = container.querySelector('.update-graph-btn');
         const functionInput = container.querySelector('.function-input');
@@ -278,7 +204,6 @@ class ArtifactRenderer {
             this.renderPlotlyGraph(graphContainer, newContent, isDarkMode);
         });
 
-        // Export functionality
         const exportBtn = container.querySelector('.export-btn');
         exportBtn.addEventListener('click', () => {
             const graphDiv = graphContainer.querySelector('.js-plotly-plot');
@@ -292,7 +217,6 @@ class ArtifactRenderer {
             }
         });
 
-        // Fullscreen functionality
         const fullscreenBtn = container.querySelector('.fullscreen-btn');
         fullscreenBtn.addEventListener('click', () => {
             container.classList.toggle('fullscreen');
@@ -304,7 +228,6 @@ class ArtifactRenderer {
                 fullscreenBtn.textContent = '⛶';
             }
             
-            // Resize the plot
             setTimeout(() => {
                 const graphDiv = graphContainer.querySelector('.js-plotly-plot');
                 if (graphDiv) {
@@ -314,99 +237,9 @@ class ArtifactRenderer {
         });
     }
 
-    // Setup exercise controls
-    setupExerciseControls(container, content) {
-        const steps = content.steps;
-        let completedSteps = 0;
-
-        // Hint buttons
-        container.querySelectorAll('.hint-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const stepNumber = parseInt(e.target.dataset.step);
-                const stepElement = container.querySelector(`[data-step="${stepNumber}"]`);
-                const hintElement = stepElement.querySelector('.step-hint');
-                
-                hintElement.classList.toggle('hidden');
-                btn.textContent = hintElement.classList.contains('hidden') ? '💡 Hint' : '🔍 Hide Hint';
-            });
-        });
-
-        // Answer checking
-        container.querySelectorAll('.check-answer-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const stepNumber = parseInt(e.target.dataset.step);
-                const stepElement = container.querySelector(`[data-step="${stepNumber}"]`);
-                const answerInput = stepElement.querySelector('.step-answer');
-                const feedbackElement = stepElement.querySelector('.step-feedback');
-                
-                const userAnswer = answerInput.value.trim();
-                const step = steps.find(s => s.step_number === stepNumber);
-                
-                if (!step) return;
-
-                let isCorrect = false;
-                
-                // Simple answer validation
-                if (step.validation_type === 'numeric' && step.expected_answer) {
-                    const expected = parseFloat(step.expected_answer);
-                    const user = parseFloat(userAnswer);
-                    const tolerance = step.tolerance || 0.01;
-                    isCorrect = Math.abs(expected - user) <= tolerance;
-                } else if (step.expected_answer) {
-                    isCorrect = userAnswer.toLowerCase() === step.expected_answer.toLowerCase();
-                }
-
-                feedbackElement.classList.remove('hidden');
-                feedbackElement.className = `step-feedback ${isCorrect ? 'correct' : 'incorrect'}`;
-                feedbackElement.textContent = isCorrect ? 
-                    '✓ Correct! Well done.' : 
-                    '✗ Not quite right. Try again or check the hint.';
-
-                if (isCorrect && !stepElement.classList.contains('completed')) {
-                    stepElement.classList.add('completed');
-                    completedSteps++;
-                    this.updateExerciseProgress(container, completedSteps, steps.length);
-                }
-            });
-        });
-
-        // Enter key support for answers
-        container.querySelectorAll('.step-answer').forEach(input => {
-            input.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    const checkBtn = input.parentElement.querySelector('.check-answer-btn');
-                    checkBtn.click();
-                }
-            });
-        });
-    }
-
-    // Update exercise progress
-    updateExerciseProgress(container, completed, total) {
-        const progressFill = container.querySelector('.progress-fill');
-        const progressText = container.querySelector('.progress-text');
-        
-        const percentage = (completed / total) * 100;
-        progressFill.style.width = `${percentage}%`;
-        progressText.textContent = `${completed} / ${total} steps completed`;
-        
-        if (completed === total) {
-            const header = container.querySelector('.artifact-header');
-            header.classList.add('completed');
-            
-            // Add completion celebration
-            const celebration = document.createElement('div');
-            celebration.className = 'completion-message';
-            celebration.innerHTML = '🎉 Exercise completed! Great work!';
-            container.querySelector('.artifact-content').appendChild(celebration);
-        }
-    }
-
-    // Setup step-by-step animation
     setupStepByStepAnimation(container) {
         const steps = container.querySelectorAll('.solution-step');
         
-        // Initially hide all steps except the first
         steps.forEach((step, index) => {
             if (index > 0) {
                 step.style.opacity = '0.3';
@@ -414,7 +247,6 @@ class ArtifactRenderer {
             }
         });
 
-        // Animate steps one by one
         let currentStep = 0;
         
         const animateNextStep = () => {
@@ -427,7 +259,6 @@ class ArtifactRenderer {
             }
         };
 
-        // Auto-advance every 2 seconds, or click to advance
         let autoAdvance = setInterval(animateNextStep, 2000);
         
         container.addEventListener('click', () => {
@@ -435,7 +266,6 @@ class ArtifactRenderer {
             animateNextStep();
         });
 
-        // Replay functionality
         const replayBtn = container.querySelector('.replay-btn');
         if (replayBtn) {
             replayBtn.addEventListener('click', () => {
@@ -454,7 +284,6 @@ class ArtifactRenderer {
         }
     }
 
-    // Render Plotly graph
     renderPlotlyGraph(container, content, isDarkMode) {
         try {
             const x = [];
@@ -531,7 +360,6 @@ class ArtifactRenderer {
         }
     }
 
-    // Parse mathematical expressions (same as before)
     parseMathExpression(expression, xVal) {
         let expr = expression.replace(/f\(x\)\s*=\s*/, '');
         
@@ -557,5 +385,4 @@ class ArtifactRenderer {
     }
 }
 
-// Global artifact renderer instance
 window.artifactRenderer = new ArtifactRenderer();
