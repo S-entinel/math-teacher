@@ -3,6 +3,7 @@ class ArtifactRenderer {
         this.apiUrl = 'http://localhost:8000';
         this.artifacts = new Map();
         this.renderingQueue = [];
+        this.plotlyGraphs = new Map();
     }
 
     parseArtifacts(text) {
@@ -105,16 +106,17 @@ class ArtifactRenderer {
         container.dataset.artifactId = artifactId;
 
         if (artifactData.type === 'graph') {
-            return this.renderGraphArtifact(container, artifactData);
+            return this.renderGraphArtifact(container, artifactData, artifactId);
         }
         
         container.innerHTML = `<div class="artifact-error">UNKNOWN ARTIFACT TYPE</div>`;
         return container;
     }
 
-    renderGraphArtifact(container, data) {
+    renderGraphArtifact(container, data, artifactId) {
         const content = data.content;
         const cleanFunction = this.cleanFunctionDisplay(content.function);
+        const graphId = `graph-${artifactId}`;
 
         container.innerHTML = `
             <div class="artifact-header">
@@ -126,7 +128,7 @@ class ArtifactRenderer {
             </div>
             <div class="artifact-content">
                 <div class="graph-container">
-                    <div class="graph-display" id="graph-${Date.now()}" style="width: 100%; height: 350px; position: relative;">
+                    <div class="graph-display" id="${graphId}">
                         <div class="graph-loading">
                             <span class="loading-text">RENDERING GRAPH</span>
                             <span class="thinking-dots">
@@ -140,7 +142,7 @@ class ArtifactRenderer {
                 <div class="graph-controls">
                     <div class="control-group">
                         <label class="control-label">FUNCTION</label>
-                        <input type="text" class="function-input terminal-input" value="${content.function}" />
+                        <input type="text" class="function-input terminal-input" value="${content.function}" placeholder="e.g. x^2, sin(x), log(x)" />
                     </div>
                     <div class="control-group">
                         <label class="control-label">X RANGE</label>
@@ -150,48 +152,66 @@ class ArtifactRenderer {
                             <input type="number" class="x-max-input terminal-input" value="${content.x_max}" step="0.5" />
                         </div>
                     </div>
+                    <div class="control-group">
+                        <label class="control-label">Y RANGE</label>
+                        <div class="range-inputs">
+                            <input type="number" class="y-min-input terminal-input" value="${content.y_min || ''}" step="0.5" placeholder="auto" />
+                            <span class="range-separator">TO</span>
+                            <input type="number" class="y-max-input terminal-input" value="${content.y_max || ''}" step="0.5" placeholder="auto" />
+                        </div>
+                    </div>
                     <button class="update-graph-btn terminal-btn primary">UPDATE</button>
                 </div>
             </div>
         `;
 
-        // Render graph after brief delay for loading effect
+        // Initialize graph after brief delay for loading effect
         setTimeout(() => {
-            this.renderGraph(container.querySelector('.graph-display'), content);
+            this.renderGraph(container.querySelector('.graph-display'), content, artifactId);
         }, 400);
         
-        this.setupGraphControls(container, content);
+        this.setupGraphControls(container, content, artifactId);
         return container;
     }
 
-    setupGraphControls(container, content) {
+    setupGraphControls(container, content, artifactId) {
         const updateBtn = container.querySelector('.update-graph-btn');
         const functionInput = container.querySelector('.function-input');
         const xMinInput = container.querySelector('.x-min-input');
         const xMaxInput = container.querySelector('.x-max-input');
+        const yMinInput = container.querySelector('.y-min-input');
+        const yMaxInput = container.querySelector('.y-max-input');
         const graphDisplay = container.querySelector('.graph-display');
 
         const updateGraph = () => {
             const newContent = {
                 ...content,
-                function: functionInput.value.trim(),
-                x_min: parseFloat(xMinInput.value),
-                x_max: parseFloat(xMaxInput.value)
+                function: functionInput.value.trim() || 'x',
+                x_min: parseFloat(xMinInput.value) || -10,
+                x_max: parseFloat(xMaxInput.value) || 10,
+                y_min: yMinInput.value === '' ? null : parseFloat(yMinInput.value),
+                y_max: yMaxInput.value === '' ? null : parseFloat(yMaxInput.value)
             };
             
-            // Update directly without loading state to prevent height loss
-            this.renderGraph(graphDisplay, newContent);
+            // Update using react
+            this.updateExistingGraph(graphDisplay, newContent);
             
-            // Update the content reference for future updates
+            // Update the content reference
             Object.assign(content, newContent);
+            
+            // Update title
+            const title = container.querySelector('.artifact-title');
+            const cleanFunction = this.cleanFunctionDisplay(newContent.function);
+            title.textContent = `► f(x) = ${cleanFunction}`;
         };
 
         updateBtn.addEventListener('click', updateGraph);
 
         // Enter key support for all inputs
-        [functionInput, xMinInput, xMaxInput].forEach(input => {
+        [functionInput, xMinInput, xMaxInput, yMinInput, yMaxInput].forEach(input => {
             input.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
+                    e.preventDefault();
                     updateGraph();
                 }
             });
@@ -203,14 +223,16 @@ class ArtifactRenderer {
             functionInput.value = content.function;
             xMinInput.value = content.x_min;
             xMaxInput.value = content.x_max;
+            yMinInput.value = content.y_min || '';
+            yMaxInput.value = content.y_max || '';
             updateGraph();
         });
 
         // Fullscreen functionality
-        this.setupFullscreenControls(container);
+        this.setupFullscreenControls(container, artifactId);
     }
 
-    setupFullscreenControls(container) {
+    setupFullscreenControls(container, artifactId) {
         const fullscreenBtn = container.querySelector('.fullscreen-btn');
         const graphDisplay = container.querySelector('.graph-display');
 
@@ -222,7 +244,7 @@ class ArtifactRenderer {
                 fullscreenBtn.textContent = 'EXIT';
                 document.body.style.overflow = 'hidden';
                 
-                // Wait for CSS transition then resize
+                // Let CSS handle the fullscreen sizing
                 setTimeout(() => {
                     this.resizeGraph(graphDisplay);
                 }, 150);
@@ -231,6 +253,7 @@ class ArtifactRenderer {
                 fullscreenBtn.textContent = 'FULL';
                 document.body.style.overflow = '';
                 
+                // Let CSS handle the normal sizing  
                 setTimeout(() => {
                     this.resizeGraph(graphDisplay);
                 }, 150);
@@ -252,6 +275,7 @@ class ArtifactRenderer {
                 if (mutation.type === 'childList') {
                     mutation.removedNodes.forEach((node) => {
                         if (node === container) {
+                            this.plotlyGraphs.delete(artifactId);
                             document.removeEventListener('keydown', handleEscape);
                             observer.disconnect();
                         }
@@ -265,34 +289,20 @@ class ArtifactRenderer {
         }
     }
 
-    renderGraph(container, content) {
+    renderGraph(container, content, artifactId) {
         try {
-            // Preserve container dimensions
-            const containerHeight = container.style.height || '350px';
-            const containerWidth = container.style.width || '100%';
-            
-            // Clear content but keep container structure
+            // Clear loading state
             container.innerHTML = '';
-            
-            // Ensure container maintains its dimensions
-            container.style.width = containerWidth;
-            container.style.height = containerHeight;
-            container.style.position = 'relative';
             
             const plotData = this.generatePlotData(content);
             const layout = this.createPlotLayout(content);
             const config = this.getPlotConfig();
             
             // Create the plot
-            Plotly.newPlot(container, plotData, layout, config);
-            
-            // Force resize to ensure proper fitting
-            setTimeout(() => {
-                const plotDiv = container.querySelector('.js-plotly-plot');
-                if (plotDiv) {
-                    Plotly.Plots.resize(plotDiv);
-                }
-            }, 100);
+            window.Plotly.newPlot(container, plotData, layout, config).then(() => {
+                // Store reference
+                this.plotlyGraphs.set(artifactId, container);
+            });
             
         } catch (error) {
             console.error('Graph rendering error:', error);
@@ -300,8 +310,23 @@ class ArtifactRenderer {
         }
     }
 
+    updateExistingGraph(container, content) {
+        try {
+            const plotData = this.generatePlotData(content);
+            const layout = this.createPlotLayout(content);
+            
+            // Use Plotly.react to update without changing container
+            window.Plotly.react(container, plotData, layout);
+            
+        } catch (error) {
+            console.error('Graph update error:', error);
+            // Fallback to full re-render if update fails
+            this.renderGraph(container, content);
+        }
+    }
+
     generatePlotData(content) {
-        const points = 500; // High resolution for smooth curves
+        const points = 1000;
         const xValues = [];
         const yValues = [];
         
@@ -340,6 +365,14 @@ class ArtifactRenderer {
     createPlotLayout(content) {
         const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
         
+        // Calculate Y range if specified
+        let yRange = {};
+        if (content.y_min !== null && content.y_max !== null) {
+            yRange = {
+                range: [content.y_min, content.y_max]
+            };
+        }
+        
         return {
             paper_bgcolor: 'transparent',
             plot_bgcolor: isDarkMode ? '#000000' : '#ffffff',
@@ -351,6 +384,7 @@ class ArtifactRenderer {
             },
             
             xaxis: {
+                range: [content.x_min, content.x_max],
                 gridcolor: isDarkMode ? '#333333' : '#cccccc',
                 gridwidth: 1,
                 zerolinecolor: isDarkMode ? '#ffffff' : '#000000',
@@ -367,6 +401,7 @@ class ArtifactRenderer {
             },
             
             yaxis: {
+                ...yRange,
                 gridcolor: isDarkMode ? '#333333' : '#cccccc',
                 gridwidth: 1,
                 zerolinecolor: isDarkMode ? '#ffffff' : '#000000',
@@ -382,7 +417,7 @@ class ArtifactRenderer {
                 spikethickness: 1
             },
             
-            margin: { l: 50, r: 20, b: 50, t: 30 },
+            margin: { l: 60, r: 20, b: 50, t: 20 },
             showlegend: false,
             hovermode: 'x unified',
             autosize: true,
@@ -423,8 +458,8 @@ class ArtifactRenderer {
 
     resizeGraph(container) {
         const plotDiv = container.querySelector('.js-plotly-plot');
-        if (plotDiv) {
-            Plotly.Plots.resize(plotDiv);
+        if (plotDiv && window.Plotly) {
+            window.Plotly.Plots.resize(plotDiv);
         }
     }
 
@@ -471,7 +506,23 @@ class ArtifactRenderer {
     cleanFunctionDisplay(functionStr) {
         return functionStr.replace(/\*\*/g, '^').replace(/\*/g, '·');
     }
+
+    // Public method to resize all graphs
+    resizeAllGraphs() {
+        this.plotlyGraphs.forEach((container) => {
+            this.resizeGraph(container);
+        });
+    }
 }
 
 // Initialize global instance
 window.artifactRenderer = new ArtifactRenderer();
+
+// Handle window resize
+window.addEventListener('resize', () => {
+    if (window.artifactRenderer) {
+        setTimeout(() => {
+            window.artifactRenderer.resizeAllGraphs();
+        }, 100);
+    }
+});
