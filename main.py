@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-AI Math Teacher FastAPI Backend with Comprehensive Logging
+AI Math Teacher FastAPI Backend
 A web API for the AI math tutor using Google Gemini
 """
 
@@ -42,6 +42,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Request/Response Models
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -73,6 +74,7 @@ class ConversationHistory(BaseModel):
     created_at: datetime
     last_active: datetime
 
+# Global conversation storage
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -123,7 +125,7 @@ class MathTeacherAPI:
         Mathematical formatting:
         - Use LaTeX notation for all mathematical expressions
         - Inline math: $expression$ for simple formulas within text
-        - Display math: $$expression$$ for important equations on their own lines
+        - Display math: $expression$ for important equations on their own lines
         - Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
         - Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
 
@@ -137,12 +139,12 @@ class MathTeacherAPI:
 
         <artifact>
         {
-            "type": "step_by_step",
-            "title": "Solution Steps",
+            "type": "graph",
+            "title": "Function Graph", 
             "content": {
-                "problem": "...",
-                "steps": [...],
-                "final_result": "..."
+                "function": "x^2",
+                "x_min": -5,
+                "x_max": 5
             }
         }
         </artifact>
@@ -161,26 +163,6 @@ class MathTeacherAPI:
                 "function": "x^2",
                 "x_min": -5,
                 "x_max": 5
-            }
-        }
-        </artifact>
-
-        For step-by-step solutions:
-        <artifact>
-        {
-            "type": "step_by_step",
-            "title": "Step-by-Step Solution",
-            "content": {
-                "problem": "Solve x² + 5x + 6 = 0",
-                "steps": [
-                    {
-                        "step": 1,
-                        "action": "Factor the quadratic",
-                        "explanation": "Look for two numbers that multiply to 6 and add to 5",
-                        "result": "(x + 2)(x + 3) = 0"
-                    }
-                ],
-                "final_result": "x = -2 or x = -3"
             }
         }
         </artifact>
@@ -346,6 +328,7 @@ class MathTeacherAPI:
             
             raise HTTPException(status_code=500, detail=f"Error communicating with AI: {error_msg}")
 
+# Initialize API
 math_teacher = MathTeacherAPI()
 
 @app.on_event("startup")
@@ -356,6 +339,7 @@ async def startup_event():
 async def shutdown_event():
     log_shutdown()
 
+# API Endpoints
 @app.get("/")
 async def root():
     return {
@@ -526,6 +510,7 @@ async def health_check():
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Artifact Endpoints
 @app.post("/artifacts/create")
 async def create_artifact(request: Dict[str, Any]):
     try:
@@ -541,14 +526,6 @@ async def create_artifact(request: Dict[str, Any]):
                     function=content.get("function", ""),
                     x_min=content.get("x_min", -10),
                     x_max=content.get("x_max", 10),
-                    title=title
-                )
-            elif artifact_type == "step_by_step":
-                artifact_id = artifact_generator.create_step_by_step_artifact(
-                    session_id=session_id,
-                    problem=content.get("problem", ""),
-                    steps=content.get("steps", []),
-                    final_result=content.get("final_result", ""),
                     title=title
                 )
             else:

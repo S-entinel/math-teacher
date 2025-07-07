@@ -1,12 +1,13 @@
-/* Artifact Components */
+/* Artifact Components - Improved Layout and Sizing */
 
-/* Graph Artifacts */
 .artifact-container {
     margin: var(--space-6) 0;
     border: var(--border-thick) solid var(--border);
     background: var(--bg-primary);
     position: relative;
     font-family: var(--font-mono);
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .artifact-container.graph-artifact {
@@ -21,6 +22,8 @@
     justify-content: space-between;
     align-items: center;
     position: relative;
+    min-height: 48px;
+    box-sizing: border-box;
 }
 
 .artifact-title {
@@ -30,11 +33,17 @@
     color: var(--text-primary);
     text-transform: uppercase;
     letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    margin-right: var(--space-3);
 }
 
 .artifact-actions {
     display: flex;
     gap: var(--space-2);
+    flex-shrink: 0;
 }
 
 .artifact-btn {
@@ -49,6 +58,7 @@
     letter-spacing: 1px;
     cursor: pointer;
     min-width: 50px;
+    transition: none;
 }
 
 .artifact-btn:hover {
@@ -60,20 +70,44 @@
     transform: translate(1px, 1px);
 }
 
-/* Artifact Content */
+/* Artifact Content Layout */
 .artifact-content {
     padding: var(--space-5);
+    box-sizing: border-box;
 }
 
-/* Graph Display */
-.graph-display {
-    border: var(--border-width) solid var(--border);
-    background: var(--bg-primary);
-    position: relative;
+/* Graph Container - Perfect Fit */
+.graph-container {
+    width: 100%;
+    box-sizing: border-box;
     margin-bottom: var(--space-4);
 }
 
-.graph-loading {
+.graph-display {
+    width: 100% !important;
+    height: 350px !important;
+    min-height: 350px !important;
+    border: var(--border-width) solid var(--border);
+    background: var(--bg-primary);
+    position: relative;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+/* Ensure Plotly plot fills the container properly */
+.graph-display .js-plotly-plot {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Make sure the main plot container maintains dimensions */
+.graph-display .main-svg {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+.graph-loading,
+.graph-error {
     position: absolute;
     top: 50%;
     left: 50%;
@@ -85,16 +119,10 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
+    z-index: 2;
 }
 
 .graph-error {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    color: var(--text-primary);
-    font-family: var(--font-mono);
     max-width: 80%;
 }
 
@@ -119,20 +147,22 @@
     opacity: 0.6;
 }
 
-/* Graph Controls */
+/* Graph Controls - Clean Layout */
 .graph-controls {
     background: var(--bg-secondary);
     border: var(--border-width) solid var(--border);
     padding: var(--space-4);
     display: grid;
-    grid-template-columns: 2fr 2fr auto;
+    grid-template-columns: 1fr 1fr auto;
     gap: var(--space-4);
     align-items: end;
+    box-sizing: border-box;
 }
 
 .control-group {
     display: flex;
     flex-direction: column;
+    gap: var(--space-2);
 }
 
 .control-label {
@@ -142,7 +172,7 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: var(--space-2);
+    margin: 0;
 }
 
 .terminal-input {
@@ -153,8 +183,8 @@
     font-size: var(--font-size-sm);
     font-family: var(--font-mono);
     font-weight: 400;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .terminal-input:focus {
@@ -168,7 +198,7 @@
     text-transform: uppercase;
 }
 
-/* Range Inputs */
+/* Range Input Layout */
 .range-inputs {
     display: flex;
     align-items: center;
@@ -186,6 +216,7 @@
     color: var(--text-primary);
     text-transform: uppercase;
     letter-spacing: 1px;
+    white-space: nowrap;
 }
 
 /* Terminal Buttons */
@@ -200,10 +231,12 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     cursor: pointer;
-    min-height: 36px;
+    min-height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
+    box-sizing: border-box;
+    transition: none;
 }
 
 .terminal-btn:hover {
@@ -225,7 +258,7 @@
     color: var(--text-primary);
 }
 
-/* Fullscreen Mode */
+/* Fullscreen Mode - Perfect Sizing */
 .artifact-container.fullscreen {
     position: fixed;
     top: 0;
@@ -237,32 +270,47 @@
     border: none;
     display: flex;
     flex-direction: column;
+    background: var(--bg-primary);
 }
 
 .artifact-container.fullscreen .artifact-content {
     flex: 1;
     display: flex;
     flex-direction: column;
+    padding: var(--space-5);
+}
+
+.artifact-container.fullscreen .graph-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    margin-bottom: var(--space-4);
 }
 
 .artifact-container.fullscreen .graph-display {
     flex: 1;
-    margin-bottom: var(--space-4);
+    height: auto !important;
+    min-height: 400px !important;
 }
+
 
 .artifact-container.fullscreen .graph-controls {
     flex-shrink: 0;
 }
 
-/* Plotly Customization */
+/* Plotly Integration - Clean Styling */
 .artifact-container .js-plotly-plot {
-    background: var(--bg-primary) !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: transparent !important;
 }
 
 .artifact-container .plotly .modebar {
     background: var(--bg-secondary) !important;
     border: var(--border-width) solid var(--border) !important;
     border-radius: 0 !important;
+    top: 5px !important;
+    right: 5px !important;
 }
 
 .artifact-container .plotly .modebar-btn {
@@ -273,6 +321,8 @@
     font-family: var(--font-mono) !important;
     font-size: var(--font-size-xs) !important;
     margin: 1px !important;
+    width: 20px !important;
+    height: 20px !important;
 }
 
 .artifact-container .plotly .modebar-btn:hover {
@@ -285,7 +335,25 @@
     color: var(--bg-primary) !important;
 }
 
-/* Mobile Responsive */
+/* Loading Animation */
+.graph-loading .thinking-dots {
+    display: inline-flex;
+    gap: var(--space-1);
+    margin-left: var(--space-2);
+}
+
+.graph-loading .thinking-dots .dot {
+    width: 3px;
+    height: 3px;
+    background: var(--text-primary);
+    animation: blink 1s step-end infinite;
+}
+
+.graph-loading .thinking-dots .dot:nth-child(1) { animation-delay: 0s; }
+.graph-loading .thinking-dots .dot:nth-child(2) { animation-delay: 0.3s; }
+.graph-loading .thinking-dots .dot:nth-child(3) { animation-delay: 0.6s; }
+
+/* Mobile Responsive - Improved Layout */
 @media (max-width: 768px) {
     .artifact-container {
         margin: var(--space-4) 0;
@@ -298,10 +366,12 @@
     .graph-controls {
         grid-template-columns: 1fr;
         gap: var(--space-3);
+        padding: var(--space-3);
     }
     
     .artifact-header {
         padding: var(--space-3);
+        min-height: 44px;
     }
     
     .artifact-title {
@@ -316,10 +386,16 @@
     
     .graph-display {
         height: 280px !important;
+        min-height: 280px !important;
     }
     
     .artifact-container.fullscreen .graph-display {
-        height: 70vh !important;
+        min-height: 300px !important;
+    }
+    
+    .terminal-btn {
+        padding: var(--space-2) var(--space-3);
+        min-height: 36px;
     }
 }
 
@@ -356,28 +432,15 @@
     
     .graph-display {
         height: 240px !important;
+        min-height: 240px !important;
+    }
+    
+    .artifact-container.fullscreen .graph-display {
+        min-height: 250px !important;
     }
 }
 
-/* Loading Animation */
-.graph-loading .thinking-dots {
-    display: inline-flex;
-    gap: var(--space-1);
-    margin-left: var(--space-2);
-}
-
-.graph-loading .thinking-dots .dot {
-    width: 3px;
-    height: 3px;
-    background: var(--text-primary);
-    animation: blink 1s step-end infinite;
-}
-
-.graph-loading .thinking-dots .dot:nth-child(1) { animation-delay: 0s; }
-.graph-loading .thinking-dots .dot:nth-child(2) { animation-delay: 0.3s; }
-.graph-loading .thinking-dots .dot:nth-child(3) { animation-delay: 0.6s; }
-
-/* Focus States */
+/* Focus States - Improved Accessibility */
 .artifact-btn:focus,
 .terminal-btn:focus {
     outline: var(--border-thick) solid var(--text-primary);
@@ -389,7 +452,7 @@
     outline-offset: calc(var(--border-thick) * -1);
 }
 
-/* High DPI displays */
+/* High DPI Display Optimization */
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
     .artifact-btn,
     .terminal-btn {
@@ -399,14 +462,19 @@
     .artifact-container {
         border-left-width: 2px;
     }
+    
+    .graph-display {
+        border-width: 0.5px;
+    }
 }
 
-/* Print styles */
+/* Print Styles */
 @media print {
     .artifact-container {
         break-inside: avoid;
         border: 1px solid #333;
         background: white;
+        margin: 10px 0;
     }
     
     .artifact-header {
@@ -426,10 +494,15 @@
     .graph-display {
         border: 1px solid #333;
         background: white;
+        height: 300px;
+    }
+    
+    .artifact-title {
+        color: black;
     }
 }
 
-/* Accessibility - Reduced motion */
+/* Reduced Motion Accessibility */
 @media (prefers-reduced-motion: reduce) {
     .graph-loading .thinking-dots .dot {
         animation: none;
@@ -439,5 +512,9 @@
     .artifact-btn:active,
     .terminal-btn:active {
         transform: none;
+    }
+    
+    .artifact-container {
+        transition: none;
     }
 }

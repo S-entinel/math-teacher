@@ -1,4 +1,4 @@
-class EnhancedMathInterface {
+class MathInterface {
     constructor() {
         this.apiUrl = 'http://localhost:8000';
         this.sessionId = null;
@@ -10,9 +10,7 @@ class EnhancedMathInterface {
         this.sendButton = document.getElementById('send-button');
         this.sessionDisplay = document.getElementById('session-display');
         
-        // Initialize artifact renderer
         this.artifactRenderer = window.artifactRenderer;
-
         
         this.initializeEventListeners();
         this.initializeSession();
@@ -20,17 +18,14 @@ class EnhancedMathInterface {
     
     async initializeSession() {
         try {
-            updateConnectionStatus('connecting');
+            this.setConnectionStatus('connecting');
             
-            // Check if we have a stored session ID
             const storedSessionId = loadFromLocalStorage('current_session_id', null);
             
             if (storedSessionId) {
-                // Verify stored session exists and ensure it's created on backend
                 const sessionStatus = await this.getSessionStatus(storedSessionId);
                 
                 if (!sessionStatus.exists) {
-                    // Session doesn't exist on backend, ensure it exists
                     await this.ensureSession(storedSessionId);
                 }
                 
@@ -38,12 +33,9 @@ class EnhancedMathInterface {
                 this.updateSessionDisplay(storedSessionId);
                 console.log(`✓ Restored session: ${storedSessionId.slice(0, 8)}`);
             } else {
-                // Create new session
                 const response = await fetch(`${this.apiUrl}/sessions/new`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
+                    headers: { 'Content-Type': 'application/json' }
                 });
                 
                 if (!response.ok) {
@@ -53,23 +45,20 @@ class EnhancedMathInterface {
                 const data = await response.json();
                 this.sessionId = data.session_id;
                 
-                // Store session ID for persistence
                 saveToLocalStorage('current_session_id', this.sessionId);
                 this.updateSessionDisplay(this.sessionId);
                 console.log(`✓ Created new session: ${this.sessionId.slice(0, 8)}`);
             }
             
             this.sessionReady = true;
-            updateConnectionStatus('connected');
-            this.enableUI();
+            this.setConnectionStatus('connected');
+            this.enableInterface();
             
         } catch (error) {
             console.error('Failed to initialize session:', error);
-            updateConnectionStatus('error');
+            this.setConnectionStatus('error');
             showNotification('Failed to initialize session', 'error');
-            
-            // Fallback: still enable UI but warn user
-            this.enableUI();
+            this.enableInterface();
         }
     }
     
@@ -90,9 +79,7 @@ class EnhancedMathInterface {
         try {
             const response = await fetch(`${this.apiUrl}/sessions/${sessionId}/ensure`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             
             if (!response.ok) {
@@ -108,18 +95,12 @@ class EnhancedMathInterface {
         }
     }
     
-    enableUI() {
-        // Enable buttons that require session
+    enableInterface() {
         const clearButton = document.getElementById('clear-conversation');
-        if (clearButton) {
-            clearButton.disabled = false;
-        }
+        if (clearButton) clearButton.disabled = false;
         
-        // Enable send functionality
         this.sendButton.disabled = false;
         this.messageInput.disabled = false;
-        
-        // Update UI state
         this.messageInput.placeholder = "enter query...";
     }
     
@@ -153,38 +134,31 @@ class EnhancedMathInterface {
         const message = this.messageInput.value.trim();
         if (!message || this.isLoading) return;
         
-        // Ensure session is ready
         if (!this.sessionReady || !this.sessionId) {
             showNotification('Session not ready, please wait...', 'warning');
             return;
         }
         
-        // Add to message history
         addToMessageHistory(message);
         
-        // Add user message
         this.addMessageGroup([{
             role: 'user',
             content: message,
             timestamp: new Date()
         }]);
         
-        // Clear input and show loading
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
         this.setLoadingState(true);
         
-        // Show status indicators
-        updateConnectionStatus('connecting');
+        this.setConnectionStatus('connecting');
         showTypingIndicator();
-        const loadingIndicator = showLoadingState();
+        showLoadingState();
         
         try {
             const response = await fetch(`${this.apiUrl}/chat`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: message,
                     session_id: this.sessionId
@@ -198,12 +172,9 @@ class EnhancedMathInterface {
                 throw error;
             }
             
-            // Update status to connected
-            updateConnectionStatus('connected');
-            
+            this.setConnectionStatus('connected');
             const data = await response.json();
             
-            // Update session ID if changed (shouldn't happen with proper session management)
             if (data.session_id && data.session_id !== this.sessionId) {
                 this.sessionId = data.session_id;
                 saveToLocalStorage('current_session_id', this.sessionId);
@@ -211,20 +182,15 @@ class EnhancedMathInterface {
                 updateSessionTimestamp(new Date());
             }
             
-            // Hide loading indicator before streaming
             hideLoadingState();
             
-            // Create response group and start streaming with artifact processing
             const responseGroup = this.createResponseGroup();
             await this.streamResponseWithArtifacts(responseGroup.querySelector('.content'), data.response);
             
         } catch (error) {
             console.error('Error sending message:', error);
             
-            // Update status to error
-            updateConnectionStatus('error');
-            
-            // Hide loading and show error
+            this.setConnectionStatus('error');
             hideLoadingState();
             
             const responseGroup = this.createResponseGroup();
@@ -235,7 +201,6 @@ class EnhancedMathInterface {
                 true
             );
             
-            // Show notification with error details for debugging
             if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
                 showNotification(`Debug: ${error.message}`, 'error');
             }
@@ -244,9 +209,8 @@ class EnhancedMathInterface {
             this.setLoadingState(false);
             hideTypingIndicator();
             
-            // Return to normal status after a delay
             setTimeout(() => {
-                updateConnectionStatus('connected');
+                this.setConnectionStatus('connected');
             }, 2000);
         }
     }
@@ -260,32 +224,26 @@ class EnhancedMathInterface {
         try {
             const response = await fetch(`${this.apiUrl}/sessions/${this.sessionId}/clear`, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
+                headers: { 'Content-Type': 'application/json' }
             });
             
             if (!response.ok) {
-                // Log the error but don't fail - backend might handle this gracefully
                 console.warn(`Clear session returned ${response.status}, but continuing...`);
             }
             
-            // Clear frontend conversation regardless of backend response
-            this.resetConversationUI();
+            this.resetConversationInterface();
             showNotification('Conversation cleared', 'success');
             return true;
             
         } catch (error) {
             console.error('Error clearing conversation:', error);
-            
-            // Still clear frontend even if backend fails
-            this.resetConversationUI();
+            this.resetConversationInterface();
             showNotification('Conversation cleared locally', 'warning');
             return false;
         }
     }
     
-    resetConversationUI() {
+    resetConversationInterface() {
         if (this.conversationArea) {
             this.conversationArea.innerHTML = `
                 <div class="message-group">
@@ -298,10 +256,7 @@ class EnhancedMathInterface {
             `;
         }
         
-        // Clear stored conversation but keep session
         clearStoredConversation();
-        
-        // Reset session timestamp but keep the session ID
         updateSessionTimestamp();
     }
     
@@ -326,17 +281,13 @@ class EnhancedMathInterface {
         
         this.conversationArea.appendChild(groupElement);
         
-        // Smart scroll to bottom
         if (window.conversationScrollManager) {
             window.conversationScrollManager.scrollToBottom();
         } else {
             scrollToBottom(this.conversationArea);
         }
         
-        // Render math for the group
         renderMath(groupElement);
-        
-        // Auto-save conversation after new message
         scheduleAutoSave();
     }
     
@@ -367,10 +318,8 @@ class EnhancedMathInterface {
     async streamResponseWithArtifacts(element, text, isError = false) {
         if (isError) element.classList.add('error');
         
-        // First, process artifacts and get modified text
         const processedText = await this.artifactRenderer.processArtifacts(element, text, this.sessionId);
         
-        // Now stream the processed text
         element.innerHTML = '';
         const cursor = document.createElement('span');
         cursor.className = 'streaming-cursor';
@@ -379,7 +328,6 @@ class EnhancedMathInterface {
         
         let currentContent = '';
         
-        // Stream each character with natural timing
         for (let i = 0; i < processedText.length; i++) {
             const char = processedText[i];
             currentContent += char;
@@ -388,7 +336,6 @@ class EnhancedMathInterface {
             
             renderMathLive(element);
             
-            // Smart scroll during streaming
             if (window.conversationScrollManager) {
                 window.conversationScrollManager.scrollToBottom();
             } else {
@@ -398,21 +345,13 @@ class EnhancedMathInterface {
             await new Promise(resolve => setTimeout(resolve, getTypingDelay(char)));
         }
         
-        // Final render without cursor
         element.innerHTML = currentContent;
-        
-        // Apply artifacts to replace placeholders
         this.artifactRenderer.applyArtifacts(element);
-        
-        // Render math
         renderMath(element);
-        
-        // Auto-save after streaming is complete
         scheduleAutoSave();
     }
     
     async streamResponse(element, text, isError = false) {
-        // Fallback for non-artifact responses
         if (isError) element.classList.add('error');
         
         element.innerHTML = '';
@@ -423,7 +362,6 @@ class EnhancedMathInterface {
         
         let currentContent = '';
         
-        // Stream each character with natural timing
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
             currentContent += char;
@@ -432,7 +370,6 @@ class EnhancedMathInterface {
             
             renderMathLive(element);
             
-            // Smart scroll during streaming
             if (window.conversationScrollManager) {
                 window.conversationScrollManager.scrollToBottom();
             } else {
@@ -442,11 +379,8 @@ class EnhancedMathInterface {
             await new Promise(resolve => setTimeout(resolve, getTypingDelay(char)));
         }
         
-        // Final render
         element.innerHTML = currentContent;
         renderMath(element);
-        
-        // Auto-save after streaming is complete
         scheduleAutoSave();
     }
     
@@ -454,5 +388,9 @@ class EnhancedMathInterface {
         this.isLoading = loading;
         this.sendButton.disabled = loading || !this.sessionReady;
         this.sendButton.innerHTML = loading ? '<span class="loading-dots">PROCESSING</span>' : 'EXECUTE';
+    }
+    
+    setConnectionStatus(status) {
+        updateConnectionStatus(status);
     }
 }
