@@ -13,10 +13,13 @@ class ArtifactRenderer {
         while ((match = artifactRegex.exec(text)) !== null) {
             try {
                 const artifactData = JSON.parse(match[1]);
-                artifacts.push({
-                    originalText: match[0],
-                    data: artifactData
-                });
+                // Only process graph artifacts now
+                if (artifactData.type === 'graph') {
+                    artifacts.push({
+                        originalText: match[0],
+                        data: artifactData
+                    });
+                }
             } catch (error) {
                 console.error('Failed to parse artifact:', error);
             }
@@ -69,7 +72,7 @@ class ArtifactRenderer {
                 console.error('Failed to create artifact:', error);
                 processedText = processedText.replace(
                     artifact.originalText, 
-                    `[Artifact Error: ${artifact.data.title || 'Unknown'}]`
+                    `[GRAPH ERROR: ${artifact.data.title || 'Function visualization failed'}]`
                 );
             }
         }
@@ -101,87 +104,71 @@ class ArtifactRenderer {
 
     renderArtifact(artifactId, artifactData) {
         const container = document.createElement('div');
-        container.className = 'artifact-container';
+        container.className = 'artifact-container graph-artifact';
         container.dataset.artifactId = artifactId;
 
-        switch (artifactData.type) {
-            case 'graph':
-                return this.renderGraphArtifact(container, artifactData);
-            case 'step_by_step':
-                return this.renderStepByStepArtifact(container, artifactData);
-            default:
-                container.innerHTML = `<div class="artifact-error">Unknown artifact type: ${artifactData.type}</div>`;
-                return container;
+        if (artifactData.type === 'graph') {
+            return this.renderGraphArtifact(container, artifactData);
         }
-    }
-
-    renderGraphArtifact(container, data) {
-        container.className += ' graph-artifact';
         
-        const content = data.content;
-        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
-
-        container.innerHTML = `
-            <div class="artifact-header">
-                <div class="artifact-title">${data.title || 'Mathematical Graph'}</div>
-                <div class="artifact-actions">
-                    <button class="artifact-btn export-btn" title="Export graph">Export</button>
-                    <button class="artifact-btn fullscreen-btn" title="Fullscreen">⛶</button>
-                </div>
-            </div>
-            <div class="artifact-content">
-                <div class="graph-container" style="height: 400px;"></div>
-                <div class="graph-controls">
-                    <label>Function: <input type="text" class="function-input" value="${content.function}" /></label>
-                    <label>X Min: <input type="number" class="x-min-input" value="${content.x_min}" /></label>
-                    <label>X Max: <input type="number" class="x-max-input" value="${content.x_max}" /></label>
-                    <button class="update-graph-btn">Update Graph</button>
-                </div>
-            </div>
-        `;
-
-        this.renderPlotlyGraph(container.querySelector('.graph-container'), content, isDarkMode);
-        this.setupGraphControls(container, content);
-
+        container.innerHTML = `<div class="artifact-error">UNKNOWN ARTIFACT TYPE</div>`;
         return container;
     }
 
-    renderStepByStepArtifact(container, data) {
-        container.className += ' step-by-step-artifact';
-        
+    renderGraphArtifact(container, data) {
         const content = data.content;
-
-        let stepsHtml = content.steps.map((step, index) => `
-            <div class="solution-step" data-step="${step.step}">
-                <div class="step-number">${step.step}</div>
-                <div class="step-content">
-                    <div class="step-action">${step.action}</div>
-                    <div class="step-explanation">${step.explanation}</div>
-                    <div class="step-result">${step.result}</div>
-                </div>
-            </div>
-        `).join('');
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        
+        // Clean function display for title
+        const displayFunction = content.function.replace(/\*\*/g, '^').replace(/\*/g, '·');
 
         container.innerHTML = `
             <div class="artifact-header">
-                <div class="artifact-title">${data.title || 'Step-by-Step Solution'}</div>
+                <div class="artifact-title">► ${data.title || `f(x) = ${displayFunction}`}</div>
                 <div class="artifact-actions">
-                    <button class="artifact-btn replay-btn" title="Replay solution">⟲</button>
+                    <button class="artifact-btn reset-btn" title="Reset view">RESET</button>
+                    <button class="artifact-btn fullscreen-btn" title="Fullscreen">FULL</button>
                 </div>
             </div>
             <div class="artifact-content">
-                <div class="problem-statement">${content.problem}</div>
-                <div class="solution-steps">
-                    ${stepsHtml}
+                <div class="graph-display" style="height: 350px; position: relative;">
+                    <div class="graph-loading">
+                        <span class="loading-text">RENDERING GRAPH</span>
+                        <span class="thinking-dots">
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </span>
+                    </div>
                 </div>
-                <div class="final-result">
-                    <strong>Final Answer: </strong>${content.final_result}
+                <div class="graph-controls">
+                    <div class="control-group">
+                        <label class="control-label">
+                            FUNCTION
+                            <input type="text" class="function-input terminal-input" value="${content.function}" />
+                        </label>
+                    </div>
+                    <div class="control-group">
+                        <label class="control-label">
+                            X RANGE
+                            <div class="range-inputs">
+                                <input type="number" class="x-min-input terminal-input" value="${content.x_min}" step="0.5" />
+                                <span class="range-separator">TO</span>
+                                <input type="number" class="x-max-input terminal-input" value="${content.x_max}" step="0.5" />
+                            </div>
+                        </label>
+                    </div>
+                    <button class="update-graph-btn terminal-btn primary">UPDATE</button>
                 </div>
             </div>
         `;
 
-        this.setupStepByStepAnimation(container);
-
+        // Render graph after a brief delay to show loading state
+        setTimeout(() => {
+            this.renderPlotlyGraph(container.querySelector('.graph-display'), content, isDarkMode);
+        }, 300);
+        
+        this.setupGraphControls(container, content);
         return container;
     }
 
@@ -190,105 +177,95 @@ class ArtifactRenderer {
         const functionInput = container.querySelector('.function-input');
         const xMinInput = container.querySelector('.x-min-input');
         const xMaxInput = container.querySelector('.x-max-input');
-        const graphContainer = container.querySelector('.graph-container');
+        const graphDisplay = container.querySelector('.graph-display');
 
-        updateBtn.addEventListener('click', () => {
+        // Update graph handler
+        const updateGraph = () => {
             const newContent = {
                 ...content,
-                function: functionInput.value,
+                function: functionInput.value.trim(),
                 x_min: parseFloat(xMinInput.value),
                 x_max: parseFloat(xMaxInput.value)
             };
             
-            const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
-            this.renderPlotlyGraph(graphContainer, newContent, isDarkMode);
+            // Show loading state
+            graphDisplay.innerHTML = `
+                <div class="graph-loading">
+                    <span class="loading-text">UPDATING GRAPH</span>
+                    <span class="thinking-dots">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </span>
+                </div>
+            `;
+            
+            setTimeout(() => {
+                const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+                this.renderPlotlyGraph(graphDisplay, newContent, isDarkMode);
+            }, 200);
+        };
+
+        updateBtn.addEventListener('click', updateGraph);
+
+        // Enter key support
+        [functionInput, xMinInput, xMaxInput].forEach(input => {
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    updateGraph();
+                }
+            });
         });
 
-        const exportBtn = container.querySelector('.export-btn');
-        exportBtn.addEventListener('click', () => {
-            const graphDiv = graphContainer.querySelector('.js-plotly-plot');
-            if (graphDiv) {
-                Plotly.downloadImage(graphDiv, {
-                    format: 'png',
-                    width: 800,
-                    height: 600,
-                    filename: `graph_${content.function.replace(/[^a-zA-Z0-9]/g, '_')}`
-                });
-            }
+        // Reset button
+        const resetBtn = container.querySelector('.reset-btn');
+        resetBtn.addEventListener('click', () => {
+            functionInput.value = content.function;
+            xMinInput.value = content.x_min;
+            xMaxInput.value = content.x_max;
+            updateGraph();
         });
 
+        // Fullscreen toggle
         const fullscreenBtn = container.querySelector('.fullscreen-btn');
         fullscreenBtn.addEventListener('click', () => {
             container.classList.toggle('fullscreen');
+            
             if (container.classList.contains('fullscreen')) {
-                graphContainer.style.height = '80vh';
-                fullscreenBtn.textContent = '⛶';
+                graphDisplay.style.height = '80vh';
+                fullscreenBtn.textContent = 'EXIT';
+                document.body.style.overflow = 'hidden';
             } else {
-                graphContainer.style.height = '400px';
-                fullscreenBtn.textContent = '⛶';
+                graphDisplay.style.height = '350px';
+                fullscreenBtn.textContent = 'FULL';
+                document.body.style.overflow = '';
             }
             
+            // Resize Plotly graph
             setTimeout(() => {
-                const graphDiv = graphContainer.querySelector('.js-plotly-plot');
-                if (graphDiv) {
-                    Plotly.Plots.resize(graphDiv);
+                const plotlyDiv = graphDisplay.querySelector('.js-plotly-plot');
+                if (plotlyDiv) {
+                    Plotly.Plots.resize(plotlyDiv);
                 }
             }, 100);
         });
-    }
 
-    setupStepByStepAnimation(container) {
-        const steps = container.querySelectorAll('.solution-step');
-        
-        steps.forEach((step, index) => {
-            if (index > 0) {
-                step.style.opacity = '0.3';
-                step.style.transform = 'translateY(20px)';
+        // Close fullscreen on Escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && container.classList.contains('fullscreen')) {
+                fullscreenBtn.click();
             }
         });
-
-        let currentStep = 0;
-        
-        const animateNextStep = () => {
-            if (currentStep < steps.length - 1) {
-                currentStep++;
-                const step = steps[currentStep];
-                step.style.transition = 'all 0.5s ease';
-                step.style.opacity = '1';
-                step.style.transform = 'translateY(0)';
-            }
-        };
-
-        let autoAdvance = setInterval(animateNextStep, 2000);
-        
-        container.addEventListener('click', () => {
-            clearInterval(autoAdvance);
-            animateNextStep();
-        });
-
-        const replayBtn = container.querySelector('.replay-btn');
-        if (replayBtn) {
-            replayBtn.addEventListener('click', () => {
-                currentStep = 0;
-                clearInterval(autoAdvance);
-                
-                steps.forEach((step, index) => {
-                    if (index > 0) {
-                        step.style.opacity = '0.3';
-                        step.style.transform = 'translateY(20px)';
-                    }
-                });
-                
-                autoAdvance = setInterval(animateNextStep, 2000);
-            });
-        }
     }
 
     renderPlotlyGraph(container, content, isDarkMode) {
         try {
+            // Clear loading state
+            container.innerHTML = '';
+            
             const x = [];
             const y = [];
-            const steps = 300;
+            const steps = 500; // Higher resolution for smoother curves
             
             for (let i = 0; i <= steps; i++) {
                 const xVal = content.x_min + (content.x_max - content.x_min) * i / steps;
@@ -296,7 +273,8 @@ class ArtifactRenderer {
                 
                 try {
                     const expr = this.parseMathExpression(content.function, xVal);
-                    y.push(eval(expr));
+                    const result = eval(expr);
+                    y.push(isFinite(result) ? result : null);
                 } catch (e) {
                     y.push(null);
                 }
@@ -308,76 +286,146 @@ class ArtifactRenderer {
                 type: 'scatter',
                 mode: 'lines',
                 line: {
-                    color: isDarkMode ? '#00ff00' : '#000000',
+                    color: isDarkMode ? '#ffffff' : '#000000',
                     width: 2
                 },
-                name: content.function
+                name: content.function,
+                connectgaps: false
             };
             
+            // Terminal-style layout
             const layout = {
                 paper_bgcolor: 'transparent',
                 plot_bgcolor: isDarkMode ? '#000000' : '#ffffff',
                 font: {
                     family: 'JetBrains Mono, monospace',
-                    size: 12,
-                    color: isDarkMode ? '#00ff00' : '#000000'
+                    size: 11,
+                    color: isDarkMode ? '#ffffff' : '#000000'
                 },
-
+                
                 xaxis: {
                     gridcolor: isDarkMode ? '#333333' : '#cccccc',
-                    zerolinecolor: isDarkMode ? '#00ff00' : '#000000',
-                    color: isDarkMode ? '#00ff00' : '#000000',
-                    title: content.axes_labels?.x || 'x'
+                    gridwidth: 1,
+                    zerolinecolor: isDarkMode ? '#ffffff' : '#000000',
+                    zerolinewidth: 2,
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    title: {
+                        text: content.axes_labels?.x || 'x',
+                        font: { size: 12 }
+                    },
+                    showspikes: true,
+                    spikecolor: isDarkMode ? '#ffffff' : '#000000',
+                    spikethickness: 1,
+                    spikedash: 'solid'
                 },
-
+                
                 yaxis: {
                     gridcolor: isDarkMode ? '#333333' : '#cccccc',
-                    zerolinecolor: isDarkMode ? '#00ff00' : '#000000',
-                    color: isDarkMode ? '#00ff00' : '#000000',
-                    title: content.axes_labels?.y || 'y'
+                    gridwidth: 1,
+                    zerolinecolor: isDarkMode ? '#ffffff' : '#000000',
+                    zerolinewidth: 2,
+                    color: isDarkMode ? '#ffffff' : '#000000',
+                    title: {
+                        text: content.axes_labels?.y || 'y',
+                        font: { size: 12 }
+                    },
+                    showspikes: true,
+                    spikecolor: isDarkMode ? '#ffffff' : '#000000',
+                    spikethickness: 1,
+                    spikedash: 'solid'
                 },
-
+                
                 title: {
                     text: content.title || '',
-                    font: { color: isDarkMode ? '#e8eaed' : '#1a202c' }
+                    font: { 
+                        color: isDarkMode ? '#ffffff' : '#000000',
+                        size: 14
+                    }
                 },
-                margin: { l: 60, r: 20, b: 60, t: 60 },
-                showlegend: false
+                
+                margin: { l: 60, r: 20, b: 60, t: content.title ? 60 : 20 },
+                showlegend: false,
+                hovermode: 'x unified',
+                
+                // Terminal-style annotations for special points
+                annotations: (content.annotations || []).map(ann => ({
+                    x: ann.x,
+                    y: ann.y,
+                    text: ann.text,
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 1,
+                    arrowcolor: isDarkMode ? '#ffffff' : '#000000',
+                    font: {
+                        color: isDarkMode ? '#ffffff' : '#000000',
+                        size: 10
+                    },
+                    bgcolor: isDarkMode ? '#000000' : '#ffffff',
+                    bordercolor: isDarkMode ? '#ffffff' : '#000000',
+                    borderwidth: 1
+                }))
             };
             
             const config = {
                 displayModeBar: true,
                 displaylogo: false,
                 responsive: true,
-                modeBarButtonsToRemove: ['pan2d', 'lasso2d', 'select2d']
+                modeBarButtonsToRemove: [
+                    'pan2d', 'lasso2d', 'select2d', 'autoScale2d',
+                    'hoverClosestCartesian', 'hoverCompareCartesian'
+                ],
+                modeBarButtons: [[
+                    'zoom2d', 'zoomIn2d', 'zoomOut2d', 'resetScale2d',
+                    'toImage'
+                ]]
             };
             
             Plotly.newPlot(container, [trace], layout, config);
             
         } catch (error) {
             console.error('Graph rendering error:', error);
-            container.innerHTML = `<div class="artifact-error">Error rendering graph: ${error.message}</div>`;
+            container.innerHTML = `
+                <div class="graph-error">
+                    <div class="error-title">GRAPH RENDER ERROR</div>
+                    <div class="error-message">${error.message}</div>
+                    <div class="error-hint">Check function syntax and try again</div>
+                </div>
+            `;
         }
     }
 
     parseMathExpression(expression, xVal) {
-        let expr = expression.replace(/f\(x\)\s*=\s*/, '');
+        let expr = expression;
         
+        // Clean up common function format
+        expr = expr.replace(/f\(x\)\s*=\s*/, '');
+        
+        // Handle exponents
         expr = expr.replace(/\^/g, '**');
         expr = expr.replace(/(\d+)\s*\*\s*\*/g, 'Math.pow($1,');
         expr = expr.replace(/x\*\*(\d+)/g, 'Math.pow(x, $1)');
         expr = expr.replace(/x\^(\d+)/g, 'Math.pow(x, $1)');
+        
+        // Replace x with actual value
         expr = expr.replace(/\bx\b/g, `(${xVal})`);
         
+        // Mathematical functions
         expr = expr.replace(/\bsin\b/g, 'Math.sin');
         expr = expr.replace(/\bcos\b/g, 'Math.cos');
         expr = expr.replace(/\btan\b/g, 'Math.tan');
+        expr = expr.replace(/\basin\b/g, 'Math.asin');
+        expr = expr.replace(/\bacos\b/g, 'Math.acos');
+        expr = expr.replace(/\batan\b/g, 'Math.atan');
         expr = expr.replace(/\blog\b/g, 'Math.log10');
         expr = expr.replace(/\bln\b/g, 'Math.log');
         expr = expr.replace(/\bsqrt\b/g, 'Math.sqrt');
         expr = expr.replace(/\babs\b/g, 'Math.abs');
         expr = expr.replace(/\bexp\b/g, 'Math.exp');
+        expr = expr.replace(/\bfloor\b/g, 'Math.floor');
+        expr = expr.replace(/\bceil\b/g, 'Math.ceil');
         
+        // Constants
         expr = expr.replace(/\bpi\b/g, 'Math.PI');
         expr = expr.replace(/\be\b/g, 'Math.E');
         
@@ -385,4 +433,5 @@ class ArtifactRenderer {
     }
 }
 
+// Initialize global instance
 window.artifactRenderer = new ArtifactRenderer();

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Artifact system for AI Math Teacher
-Handles generation and rendering of interactive mathematical content
+Artifact System for AI Math Teacher
 """
 
 import json
@@ -13,7 +12,6 @@ from enum import Enum
 
 class ArtifactType(str, Enum):
     GRAPH = "graph"
-    STEP_BY_STEP = "step_by_step"
 
 class ArtifactStatus(str, Enum):
     PENDING = "pending"
@@ -30,8 +28,8 @@ class ArtifactMetadata(BaseModel):
 
 class GraphArtifact(BaseModel):
     function: str
-    x_min: float
-    x_max: float
+    x_min: float = -10
+    x_max: float = 10
     y_min: Optional[float] = None
     y_max: Optional[float] = None
     grid: bool = True
@@ -39,13 +37,10 @@ class GraphArtifact(BaseModel):
     title: Optional[str] = None
     annotations: List[Dict[str, Any]] = []
     interactive: bool = True
-
-class StepByStepArtifact(BaseModel):
-    problem: str
-    steps: List[Dict[str, Any]]
-    final_result: str
-    key_concepts: List[str] = []
-    common_mistakes: List[str] = []
+    line_style: str = "solid"  # solid, dashed, dotted
+    line_width: int = 2
+    show_points: bool = False
+    point_annotations: List[Dict[str, Any]] = []
 
 class Artifact(BaseModel):
     metadata: ArtifactMetadata
@@ -60,15 +55,19 @@ class ArtifactGenerator:
     def __init__(self):
         self.artifacts: Dict[str, Artifact] = {}
     
-    def create_graph_artifact(self, session_id: str, function: str, x_min: float, x_max: float, 
-                            title: str = None, **kwargs) -> str:
+    def create_graph_artifact(self, session_id: str, function: str, x_min: float = -10, 
+                            x_max: float = 10, title: str = None, **kwargs) -> str:
+        """Create a graph artifact with clean terminal styling"""
         artifact_id = str(uuid.uuid4())
+        
+        # Clean up function name for title
+        display_function = function.replace("**", "^").replace("*", "·")
         
         metadata = ArtifactMetadata(
             id=artifact_id,
             type=ArtifactType.GRAPH,
-            title=title or f"Graph of {function}",
-            description=f"Interactive graph showing {function}",
+            title=title or f"f(x) = {display_function}",
+            description=f"Interactive graph of {display_function}",
             tags=["graph", "function", "visualization"]
         )
         
@@ -84,35 +83,6 @@ class ArtifactGenerator:
             metadata=metadata,
             status=ArtifactStatus.COMPLETE,
             content=graph_data.dict(),
-            session_id=session_id
-        )
-        
-        self.artifacts[artifact_id] = artifact
-        return artifact_id
-    
-    def create_step_by_step_artifact(self, session_id: str, problem: str, 
-                                   steps: List[Dict], final_result: str,
-                                   title: str = None) -> str:
-        artifact_id = str(uuid.uuid4())
-        
-        metadata = ArtifactMetadata(
-            id=artifact_id,
-            type=ArtifactType.STEP_BY_STEP,
-            title=title or "Step-by-Step Solution",
-            description=f"Detailed solution for: {problem[:50]}...",
-            tags=["solution", "steps", "explanation"]
-        )
-        
-        step_by_step_data = StepByStepArtifact(
-            problem=problem,
-            steps=steps,
-            final_result=final_result
-        )
-        
-        artifact = Artifact(
-            metadata=metadata,
-            status=ArtifactStatus.COMPLETE,
-            content=step_by_step_data.dict(),
             session_id=session_id
         )
         
@@ -138,82 +108,48 @@ class ArtifactInstructionGenerator:
     @staticmethod
     def get_artifact_instructions() -> str:
         return """
-When generating mathematical content that would benefit from rich visualization or interactivity, 
-use the artifact system instead of simple text responses.
+When students ask you to graph, plot, visualize, or show a mathematical function, 
+use the artifact system to create interactive graphs.
 
 ARTIFACT GENERATION SYNTAX:
 Use this JSON structure wrapped in <artifact> tags:
 
 <artifact>
 {
-    "type": "graph|step_by_step",
+    "type": "graph",
     "title": "Descriptive title",
     "content": {
-        // Type-specific content here
+        "function": "mathematical_expression",
+        "x_min": -10,
+        "x_max": 10,
+        "annotations": []
     }
 }
 </artifact>
 
-GRAPH ARTIFACTS:
-For mathematical functions, use:
-<artifact>
-{
-    "type": "graph",
-    "title": "Graph of f(x) = x²",
-    "content": {
-        "function": "x^2",
-        "x_min": -5,
-        "x_max": 5,
-        "title": "Quadratic Function",
-        "annotations": [
-            {"x": 0, "y": 0, "text": "Vertex", "type": "point"}
-        ]
-    }
-}
-</artifact>
+FUNCTION FORMAT:
+- Use standard mathematical notation: x^2, sin(x), log(x), sqrt(x)
+- Examples: "x^2", "sin(x)", "x^3 - 2*x + 1", "sqrt(x)", "1/x"
+- For compound functions: "sin(x^2)", "log(x+1)", "exp(-x^2)"
 
-STEP-BY-STEP ARTIFACTS:
-For detailed solutions, use:
-<artifact>
-{
-    "type": "step_by_step",
-    "title": "Solving x² + 5x + 6 = 0",
-    "content": {
-        "problem": "x² + 5x + 6 = 0",
-        "steps": [
-            {
-                "step": 1,
-                "action": "Factor the quadratic",
-                "explanation": "Look for two numbers that multiply to 6 and add to 5",
-                "result": "(x + 2)(x + 3) = 0"
-            },
-            {
-                "step": 2,
-                "action": "Apply zero product property",
-                "explanation": "If ab = 0, then a = 0 or b = 0",
-                "result": "x + 2 = 0 or x + 3 = 0"
-            }
-        ],
-        "final_result": "x = -2 or x = -3"
-    }
-}
-</artifact>
-
-WHEN TO USE ARTIFACTS:
+WHEN TO USE GRAPH ARTIFACTS:
 - Student asks to "graph", "plot", "visualize", or "show" a function
-- Student asks for "step-by-step" solutions or detailed explanations
-- Complex mathematical content that benefits from structure and interactivity
+- Student wants to see the behavior of a mathematical function
+- When comparing multiple functions (create separate artifacts)
+- For demonstrating mathematical concepts visually
 
-WHEN NOT TO USE ARTIFACTS:
-- Simple conceptual explanations
-- Quick calculations
-- Basic Q&A responses
-- When the student specifically asks for text-only responses
+ANNOTATION EXAMPLES:
+For special points, extrema, or important features:
+"annotations": [
+    {"x": 0, "y": 0, "text": "Origin", "type": "point"},
+    {"x": 2, "y": 4, "text": "Local max", "type": "point"}
+]
 
-Remember: Artifacts should enhance understanding, not complicate simple explanations.
-Use them when they add genuine value to the learning experience.
+Remember: Use artifacts for visual mathematical content that enhances understanding.
+The terminal-style interface will render these with appropriate monochrome styling.
 """
 
+# Global instance
 artifact_generator = ArtifactGenerator()
 
 def get_artifact_generator() -> ArtifactGenerator:
