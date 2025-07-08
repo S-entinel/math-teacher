@@ -4,6 +4,7 @@ class MathInterface {
         this.sessionId = null;
         this.isLoading = false;
         this.sessionReady = false;
+        this.chatManager = null; // Will be set by app.js
         
         this.conversationArea = document.getElementById('conversation');
         this.messageInput = document.getElementById('message-input');
@@ -16,22 +17,26 @@ class MathInterface {
         this.initializeSession();
     }
     
-    async initializeSession() {
+    async initializeSession(sessionId = null) {
         try {
             this.setConnectionStatus('connecting');
             
-            const storedSessionId = loadFromLocalStorage('current_session_id', null);
+            // Use provided sessionId or get from chat manager
+            let targetSessionId = sessionId;
+            if (!targetSessionId && this.chatManager) {
+                targetSessionId = this.chatManager.getCurrentSessionId();
+            }
             
-            if (storedSessionId) {
-                const sessionStatus = await this.getSessionStatus(storedSessionId);
+            if (targetSessionId) {
+                const sessionStatus = await this.getSessionStatus(targetSessionId);
                 
                 if (!sessionStatus.exists) {
-                    await this.ensureSession(storedSessionId);
+                    await this.ensureSession(targetSessionId);
                 }
                 
-                this.sessionId = storedSessionId;
-                this.updateSessionDisplay(storedSessionId);
-                console.log(`✓ Restored session: ${storedSessionId.slice(0, 8)}`);
+                this.sessionId = targetSessionId;
+                this.updateSessionDisplay(targetSessionId);
+                console.log(`✓ Using session: ${targetSessionId.slice(0, 8)}`);
             } else {
                 const response = await fetch(`${this.apiUrl}/sessions/new`, {
                     method: 'POST',
@@ -141,11 +146,24 @@ class MathInterface {
         
         addToMessageHistory(message);
         
+        // Add to chat manager first
+        if (this.chatManager) {
+            this.chatManager.addMessageToActiveChat('user', message);
+            
+            // Auto-generate title for first message
+            const currentChat = this.chatManager.getCurrentChat();
+            if (currentChat && currentChat.messages.length === 1) {
+                const title = this.chatManager.generateChatTitle(message);
+                this.chatManager.updateChatTitle(currentChat.id, title);
+            }
+        }
+        
         this.addMessageGroup([{
             role: 'user',
             content: message,
             timestamp: new Date()
         }]);
+
         
         this.messageInput.value = '';
         this.messageInput.style.height = 'auto';
@@ -182,10 +200,15 @@ class MathInterface {
                 updateSessionTimestamp(new Date());
             }
             
-            hideLoadingState();
-            
-            const responseGroup = this.createResponseGroup();
-            await this.streamResponseWithArtifacts(responseGroup.querySelector('.content'), data.response);
+        hideLoadingState();
+        
+        const responseGroup = this.createResponseGroup();
+        await this.streamResponseWithArtifacts(responseGroup.querySelector('.content'), data.response);
+        
+        // Add response to chat manager
+        if (this.chatManager) {
+            this.chatManager.addMessageToActiveChat('assistant', data.response);
+        }
             
         } catch (error) {
             console.error('Error sending message:', error);
@@ -232,6 +255,17 @@ class MathInterface {
             }
             
             this.resetConversationInterface();
+            
+            // Clear chat manager's active chat messages
+            if (this.chatManager) {
+                const currentChat = this.chatManager.getCurrentChat();
+                if (currentChat) {
+                    currentChat.messages = [];
+                    this.chatManager.updateChatItemUI(currentChat.id);
+                    this.chatManager.saveChats();
+                }
+            }
+            
             showNotification('Conversation cleared', 'success');
             return true;
             

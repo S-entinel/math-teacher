@@ -22,8 +22,16 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log('✓ Smart scrolling initialized');
     }
     
+    // Initialize chat manager FIRST
+    if (!window.chatManager) {
+        window.chatManager = new ChatManager();
+        console.log('✓ Chat manager initialized');
+    }
+    
     // Initialize the main chat interface
     const mathInterface = new MathInterface();
+    mathInterface.chatManager = window.chatManager; // Link them
+    window.chatManager.mathInterface = mathInterface; // Bi-directional link
     console.log('✓ Chat interface initialized');
     
     // Make interface globally accessible
@@ -85,6 +93,8 @@ function initializeHeaderButtons() {
     const themeToggle = document.getElementById('theme-toggle');
     const copyButton = document.getElementById('copy-conversation');
     const clearButton = document.getElementById('clear-conversation');
+    const sidebarToggle = document.getElementById('sidebar-toggle');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
     
     if (themeToggle) {
         themeToggle.addEventListener('click', toggleTheme);
@@ -97,6 +107,23 @@ function initializeHeaderButtons() {
     if (clearButton) {
         clearButton.addEventListener('click', clearConversation);
     }
+    
+    // Mobile sidebar toggle
+    if (sidebarToggle) {
+        sidebarToggle.addEventListener('click', () => {
+            if (window.chatManager) {
+                window.chatManager.toggleSidebar();
+            }
+        });
+    }
+    
+    if (sidebarOverlay) {
+        sidebarOverlay.addEventListener('click', () => {
+            if (window.chatManager) {
+                window.chatManager.toggleSidebar();
+            }
+        });
+    }
 }
 
 function initializeKeyboardShortcuts() {
@@ -108,6 +135,23 @@ function initializeKeyboardShortcuts() {
             if (input) {
                 input.focus();
                 showNotification('Input focused', 'info');
+            }
+        }
+
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'N') {
+            e.preventDefault();
+            if (window.chatManager) {
+                window.chatManager.createNewChat();
+                showNotification('New chat created', 'info');
+            }
+        }
+        
+        // Ctrl/Cmd + Shift + L to toggle sidebar
+        if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'L') {
+            e.preventDefault();
+            if (window.chatManager) {
+                window.chatManager.toggleSidebar();
+                showNotification('Sidebar toggled', 'info');
             }
         }
         
@@ -245,6 +289,8 @@ function logAvailableFeatures() {
     console.log('  Ctrl/Cmd + Shift + T: Open template palette');
     console.log('  Ctrl/Cmd + Shift + H: Get help suggestion');
     console.log('  Ctrl/Cmd + Shift + R: Manually save conversation');
+    console.log('  Ctrl/Cmd + Shift + N: Create new chat');
+    console.log('  Ctrl/Cmd + Shift + L: Toggle chat sidebar');
     console.log('  Escape: Close palettes, exit fullscreen, or clear input');
     console.log('  Shift + Enter: New line in input (Enter alone sends message)');
     
