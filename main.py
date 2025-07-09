@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
 AI Math Teacher FastAPI Backend
-A web API for the AI math tutor using Google Gemini
+A web API for the AI math tutor using Google Gemini with SQLite database storage
 """
 
 import os
 import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
+
+# Database imports
+from database import get_database, get_db_session
+from db_service import get_db_service, DatabaseService, ensure_session_exists_in_db, sync_in_memory_to_db
 
 from artifact_system import (
     artifact_generator, ArtifactInstructionGenerator, 
@@ -30,8 +34,8 @@ load_dotenv()
 
 app = FastAPI(
     title="Math Teacher API",
-    description="Intelligent AI math tutor powered by Google Gemini",
-    version="1.0.0"
+    description="Intelligent AI math tutor powered by Google Gemini with persistent storage",
+    version="1.1.0"  # Updated version for database integration
 )
 
 app.add_middleware(
@@ -42,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request/Response Models
+# Request/Response Models (keeping existing ones)
 class ChatMessage(BaseModel):
     role: str
     content: str
@@ -51,6 +55,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
+    user_token: Optional[str] = None  # New: for user identification
 
 class ChatResponse(BaseModel):
     response: str
@@ -59,6 +64,7 @@ class ChatResponse(BaseModel):
 
 class SessionCreateResponse(BaseModel):
     session_id: str
+    user_token: str  # New: return user token
     created_at: datetime = datetime.now()
 
 class SessionStatusResponse(BaseModel):
@@ -74,7 +80,8 @@ class ConversationHistory(BaseModel):
     created_at: datetime
     last_active: datetime
 
-# Global conversation storage
+# KEEP EXISTING IN-MEMORY STORAGE FOR COMPATIBILITY
+# This ensures existing functionality continues to work while we add database features
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -84,14 +91,30 @@ class MathTeacherAPI:
             raise ValueError("GOOGLE_API_KEY not found in environment variables")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
-            system_instruction=self.get_system_prompt()
-        )
+        
+        # Try to initialize with system_instruction, fallback if not supported
+        try:
+            self.model = genai.GenerativeModel(
+                model_name="gemini-2.0-flash-exp",
+                system_instruction=self.get_system_prompt()
+            )
+        except TypeError:
+            # Fallback for older versions without system_instruction
+            self.model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+            self.system_prompt = self.get_system_prompt()
+        
+        # Initialize database
+        try:
+            self.db_service = get_db_service()
+            math_logger.logger.info("Database service initialized successfully")
+        except Exception as e:
+            math_logger.logger.warning(f"Database initialization failed, using in-memory only: {e}")
+            self.db_service = None
         
         math_logger.logger.info("Math Teacher API initialized successfully")
     
     def get_system_prompt(self):
+        # Keep existing system prompt unchanged
         base_prompt = """You are an intelligent AI math teacher with a confident, direct personality. You're highly knowledgeable about mathematics and take pride in your analytical abilities.
 
         Your core personality traits:
@@ -206,8 +229,11 @@ class MathTeacherAPI:
         return base_prompt
 
     @log_performance("create_session")
-    def create_session(self) -> str:
+    def create_session(self, user_token: str = None) -> tuple[str, str]:
+        """Create a new session and return (session_id, user_token)"""
         session_id = str(uuid.uuid4())
+        
+        # Create in-memory session (existing functionality)
         conversations[session_id] = {
             'chat_session': self.model.start_chat(history=[]),
             'messages': [],
@@ -215,40 +241,123 @@ class MathTeacherAPI:
             'last_active': datetime.now()
         }
         
+        # Also create in database if available
+        if self.db_service:
+            try:
+                # Get or create user
+                user = self.db_service.get_or_create_user(user_token)
+                user_token = user['session_token']
+                
+                # Create database session
+                db_session = self.db_service.create_chat_session(
+                    user_id=user['id'],
+                    session_id=session_id,
+                    title="New Math Session"
+                )
+                
+                math_logger.logger.info(f"Created session in database: {session_id}")
+                
+            except Exception as e:
+                math_logger.logger.warning(f"Failed to create database session: {e}")
+                # Continue with in-memory only
+                user_token = user_token or str(uuid.uuid4())
+        else:
+            user_token = user_token or str(uuid.uuid4())
+        
         math_logger.set_session_context(session_id, {
-            'user_agent': 'unknown',
+            'user_token': user_token,
             'session_type': 'new'
         })
         
         log_session_created(session_id)
-        return session_id
+        return session_id, user_token
 
     @log_performance("get_session_status")
     def get_session_status(self, session_id: str) -> dict:
-        if session_id not in conversations:
+        """Get session status from both in-memory and database"""
+        # Check in-memory first (for compatibility)
+        if session_id in conversations:
+            session_data = conversations[session_id]
             return {
                 'session_id': session_id,
-                'exists': False,
-                'created_at': None,
-                'last_active': None,
-                'message_count': 0
+                'exists': True,
+                'created_at': session_data['created_at'],
+                'last_active': session_data['last_active'],
+                'message_count': len(session_data['messages'])
             }
         
-        session_data = conversations[session_id]
+        # Check database if available
+        if self.db_service:
+            try:
+                db_session = self.db_service.get_chat_session(session_id)
+                if db_session:
+                    return {
+                        'session_id': session_id,
+                        'exists': True,
+                        'created_at': datetime.fromisoformat(db_session['created_at']),
+                        'last_active': datetime.fromisoformat(db_session['last_active']),
+                        'message_count': db_session['message_count']
+                    }
+            except Exception as e:
+                math_logger.logger.warning(f"Database session lookup failed: {e}")
+        
         return {
             'session_id': session_id,
-            'exists': True,
-            'created_at': session_data['created_at'],
-            'last_active': session_data['last_active'],
-            'message_count': len(session_data['messages'])
+            'exists': False,
+            'created_at': None,
+            'last_active': None,
+            'message_count': 0
         }
 
     @log_performance("ensure_session_exists")
-    def ensure_session_exists(self, session_id: str) -> str:
+    def ensure_session_exists(self, session_id: str, user_token: str = None) -> tuple[str, str]:
+        """Ensure session exists in both memory and database"""
+        # Check if session exists in memory
         if session_id and session_id in conversations:
             conversations[session_id]['last_active'] = datetime.now()
-            return session_id
-        elif session_id and session_id not in conversations:
+            
+            # Ensure it also exists in database
+            if self.db_service:
+                try:
+                    ensure_session_exists_in_db(session_id)
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to ensure database session: {e}")
+            
+            return session_id, user_token or str(uuid.uuid4())
+        
+        # Check if session exists in database only
+        if self.db_service and session_id:
+            try:
+                db_session = self.db_service.get_chat_session(session_id)
+                if db_session:
+                    # Restore to memory
+                    conversations[session_id] = {
+                        'chat_session': self.model.start_chat(history=[]),
+                        'messages': [],
+                        'created_at': datetime.fromisoformat(db_session['created_at']),
+                        'last_active': datetime.now()
+                    }
+                    
+                    # Load messages from database
+                    db_messages = self.db_service.get_session_messages(session_id)
+                    for msg in db_messages:
+                        conversations[session_id]['messages'].append(
+                            ChatMessage(
+                                role=msg['role'],
+                                content=msg['content'],
+                                timestamp=datetime.fromisoformat(msg['timestamp'])
+                            )
+                        )
+                    
+                    log_session_restored(session_id, len(db_messages))
+                    return session_id, user_token or str(uuid.uuid4())
+                    
+            except Exception as e:
+                math_logger.logger.warning(f"Failed to restore session from database: {e}")
+        
+        # Create new session if it doesn't exist anywhere
+        if session_id:
+            # Create with specific session_id
             conversations[session_id] = {
                 'chat_session': self.model.start_chat(history=[]),
                 'messages': [],
@@ -256,29 +365,47 @@ class MathTeacherAPI:
                 'last_active': datetime.now()
             }
             
+            if self.db_service:
+                try:
+                    user = self.db_service.get_or_create_user(user_token)
+                    user_token = user['session_token']
+                    
+                    self.db_service.create_chat_session(
+                        user_id=user['id'],
+                        session_id=session_id,
+                        title="Restored Session"
+                    )
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to create database session: {e}")
+                    user_token = user_token or str(uuid.uuid4())
+            
             math_logger.set_session_context(session_id, {
-                'session_type': 'restored'
+                'session_type': 'restored',
+                'user_token': user_token
             })
             
             log_session_restored(session_id, 0)
-            return session_id
+            return session_id, user_token or str(uuid.uuid4())
         else:
-            return self.create_session()
+            # Create entirely new session
+            return self.create_session(user_token)
 
     @log_performance("get_or_create_session")
-    def get_or_create_session(self, session_id: Optional[str] = None) -> str:
+    def get_or_create_session(self, session_id: Optional[str] = None, user_token: str = None) -> tuple[str, str]:
+        """Get existing session or create new one"""
         if session_id and session_id in conversations:
             conversations[session_id]['last_active'] = datetime.now()
-            return session_id
+            return session_id, user_token or str(uuid.uuid4())
         
-        return self.create_session()
+        return self.create_session(user_token)
 
     @log_performance("send_message")
-    def send_message(self, message: str, session_id: str) -> str:
+    def send_message(self, message: str, session_id: str, user_token: str = None) -> str:
+        """Send message and store in both memory and database"""
         import time
         start_time = time.time()
         
-        session_id = self.ensure_session_exists(session_id)
+        session_id, user_token = self.ensure_session_exists(session_id, user_token)
         
         if session_id not in conversations:
             raise ValueError("Session not found")
@@ -289,16 +416,42 @@ class MathTeacherAPI:
         log_message_sent(session_id, len(message))
         
         try:
-            response = chat_session.send_message(message)
+            # For newer versions with system_instruction
+            if hasattr(self, 'system_prompt'):
+                # Prepend system prompt for older versions
+                full_message = f"{self.system_prompt}\n\nUser: {message}"
+                response = chat_session.send_message(full_message)
+            else:
+                # Newer versions handle system instruction automatically
+                response = chat_session.send_message(message)
+                
             response_text = response.text
             
             response_time = (time.time() - start_time) * 1000
             
+            # Store in memory (existing functionality)
             session_data['messages'].extend([
                 ChatMessage(role="user", content=message),
                 ChatMessage(role="assistant", content=response_text)
             ])
             session_data['last_active'] = datetime.now()
+            
+            # Also store in database if available
+            if self.db_service:
+                try:
+                    self.db_service.add_message(
+                        session_id=session_id,
+                        role="user",
+                        content=message
+                    )
+                    self.db_service.add_message(
+                        session_id=session_id,
+                        role="assistant",
+                        content=response_text,
+                        response_time_ms=int(response_time)
+                    )
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to store messages in database: {e}")
             
             math_logger.log_ai_interaction(
                 session_id, 
@@ -334,25 +487,43 @@ math_teacher = MathTeacherAPI()
 @app.on_event("startup")
 async def startup_event():
     log_startup()
+    
+    # Sync any existing in-memory conversations to database
+    if math_teacher.db_service and conversations:
+        try:
+            sync_result = sync_in_memory_to_db(conversations)
+            math_logger.logger.info(f"Startup sync completed: {sync_result}")
+        except Exception as e:
+            math_logger.logger.warning(f"Startup sync failed: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
+    # Sync conversations to database before shutdown
+    if math_teacher.db_service and conversations:
+        try:
+            sync_result = sync_in_memory_to_db(conversations)
+            math_logger.logger.info(f"Shutdown sync completed: {sync_result}")
+        except Exception as e:
+            math_logger.logger.warning(f"Shutdown sync failed: {e}")
+    
     log_shutdown()
 
-# API Endpoints
+# API Endpoints (updated to support database)
 @app.get("/")
 async def root():
     return {
-        "message": "Math Teacher API - Intelligent mathematical guidance",
-        "version": "1.0.0",
+        "message": "Math Teacher API - Intelligent mathematical guidance with persistent storage",
+        "version": "1.1.0",
         "teacher": "AI Math Tutor - Direct, efficient, and knowledgeable",
+        "features": ["In-memory sessions", "Database persistence", "Interactive graphs", "Chat history"],
         "endpoints": {
             "chat": "/chat",
             "create_session": "/sessions/new",
             "session_status": "/sessions/{session_id}/status",
             "ensure_session": "/sessions/{session_id}/ensure",
             "history": "/history/{session_id}",
-            "sessions": "/sessions"
+            "sessions": "/sessions",
+            "database_stats": "/admin/stats"
         }
     }
 
@@ -360,16 +531,18 @@ async def root():
 async def create_new_session(request: Request):
     try:
         with log_request_context(None, "/sessions/new", "POST"):
-            session_id = math_teacher.create_session()
+            user_token = request.headers.get("X-User-Token")
+            session_id, user_token = math_teacher.create_session(user_token)
             
             user_agent = request.headers.get("user-agent", "unknown")
             math_logger.set_session_context(session_id, {
                 'user_agent': user_agent,
-                'session_type': 'new'
+                'session_type': 'new',
+                'user_token': user_token
             })
             
             log_feature_used(session_id, "session_creation")
-            return SessionCreateResponse(session_id=session_id)
+            return SessionCreateResponse(session_id=session_id, user_token=user_token)
     except Exception as e:
         math_logger.log_error(None, e, "create_new_session")
         raise HTTPException(status_code=500, detail=str(e))
@@ -386,15 +559,20 @@ async def get_session_status(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sessions/{session_id}/ensure", response_model=SessionCreateResponse)
-async def ensure_session_exists(session_id: str):
+async def ensure_session_exists(session_id: str, request: Request):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/ensure", "POST"):
-            ensured_session_id = math_teacher.ensure_session_exists(session_id)
-            session_data = conversations[ensured_session_id]
+            user_token = request.headers.get("X-User-Token")
+            ensured_session_id, user_token = math_teacher.ensure_session_exists(session_id, user_token)
+            
+            session_data = conversations.get(ensured_session_id, {})
+            created_at = session_data.get('created_at', datetime.now())
+            
             log_feature_used(session_id, "session_ensure")
             return SessionCreateResponse(
                 session_id=ensured_session_id,
-                created_at=session_data['created_at']
+                user_token=user_token,
+                created_at=created_at
             )
     except Exception as e:
         math_logger.log_error(session_id, e, "ensure_session_exists")
@@ -404,9 +582,9 @@ async def ensure_session_exists(session_id: str):
 async def chat_with_teacher(request: ChatRequest):
     try:
         with log_request_context(request.session_id, "/chat", "POST"):
-            session_id = math_teacher.get_or_create_session(request.session_id)
+            session_id, user_token = math_teacher.get_or_create_session(request.session_id, request.user_token)
             
-            response = math_teacher.send_message(request.message, session_id)
+            response = math_teacher.send_message(request.message, session_id, user_token)
             
             log_feature_used(session_id, "chat_message", {
                 'message_length': len(request.message),
@@ -426,18 +604,46 @@ async def chat_with_teacher(request: ChatRequest):
 async def get_conversation_history(session_id: str):
     try:
         with log_request_context(session_id, f"/history/{session_id}", "GET"):
-            if session_id not in conversations:
-                raise HTTPException(status_code=404, detail="Session not found")
+            # Try memory first
+            if session_id in conversations:
+                session_data = conversations[session_id]
+                log_feature_used(session_id, "history_access")
+                
+                return ConversationHistory(
+                    session_id=session_id,
+                    messages=session_data['messages'],
+                    created_at=session_data['created_at'],
+                    last_active=session_data['last_active']
+                )
             
-            session_data = conversations[session_id]
-            log_feature_used(session_id, "history_access")
+            # Try database if not in memory
+            if math_teacher.db_service:
+                try:
+                    db_session = math_teacher.db_service.get_chat_session(session_id)
+                    if db_session:
+                        db_messages = math_teacher.db_service.get_session_messages(session_id)
+                        
+                        messages = [
+                            ChatMessage(
+                                role=msg['role'],
+                                content=msg['content'],
+                                timestamp=datetime.fromisoformat(msg['timestamp'])
+                            ) for msg in db_messages
+                        ]
+                        
+                        log_feature_used(session_id, "history_access_db")
+                        
+                        return ConversationHistory(
+                            session_id=session_id,
+                            messages=messages,
+                            created_at=datetime.fromisoformat(db_session['created_at']),
+                            last_active=datetime.fromisoformat(db_session['last_active'])
+                        )
+                except Exception as e:
+                    math_logger.logger.warning(f"Database history lookup failed: {e}")
             
-            return ConversationHistory(
-                session_id=session_id,
-                messages=session_data['messages'],
-                created_at=session_data['created_at'],
-                last_active=session_data['last_active']
-            )
+            raise HTTPException(status_code=404, detail="Session not found")
+            
     except HTTPException:
         raise
     except Exception as e:
@@ -448,9 +654,8 @@ async def get_conversation_history(session_id: str):
 async def list_sessions():
     try:
         with log_request_context(None, "/sessions", "GET"):
-            log_feature_used(None, "sessions_list")
-            return {
-                "sessions": [
+            result = {
+                "memory_sessions": [
                     {
                         "session_id": sid,
                         "created_at": data['created_at'],
@@ -460,6 +665,17 @@ async def list_sessions():
                     for sid, data in conversations.items()
                 ]
             }
+            
+            # Add database sessions if available
+            if math_teacher.db_service:
+                try:
+                    stats = math_teacher.db_service.get_system_stats()
+                    result["database_stats"] = stats
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to get database stats: {e}")
+            
+            log_feature_used(None, "sessions_list")
+            return result
     except Exception as e:
         math_logger.log_error(None, e, "list_sessions")
         raise HTTPException(status_code=500, detail=str(e))
@@ -468,12 +684,26 @@ async def list_sessions():
 async def delete_session(session_id: str):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
-            if session_id not in conversations:
+            deleted_from_memory = False
+            deleted_from_db = False
+            
+            # Delete from memory
+            if session_id in conversations:
+                del conversations[session_id]
+                deleted_from_memory = True
+            
+            # Delete from database
+            if math_teacher.db_service:
+                try:
+                    deleted_from_db = math_teacher.db_service.delete_chat_session(session_id)
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to delete from database: {e}")
+            
+            if not deleted_from_memory and not deleted_from_db:
                 return {"message": f"Session {session_id} not found (already deleted)"}
             
-            del conversations[session_id]
             log_feature_used(session_id, "session_delete")
-            return {"message": f"Session {session_id} deleted"}
+            return {"message": f"Session {session_id} deleted", "memory": deleted_from_memory, "database": deleted_from_db}
     except Exception as e:
         math_logger.log_error(session_id, e, "delete_session")
         raise HTTPException(status_code=500, detail=str(e))
@@ -482,12 +712,20 @@ async def delete_session(session_id: str):
 async def clear_session(session_id: str):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/clear", "POST"):
+            # Clear from memory
             if session_id not in conversations:
-                math_teacher.ensure_session_exists(session_id)
+                session_id, _ = math_teacher.ensure_session_exists(session_id)
             
             conversations[session_id]['chat_session'] = math_teacher.model.start_chat(history=[])
             conversations[session_id]['messages'] = []
             conversations[session_id]['last_active'] = datetime.now()
+            
+            # Clear from database
+            if math_teacher.db_service:
+                try:
+                    math_teacher.db_service.clear_chat_session(session_id)
+                except Exception as e:
+                    math_logger.logger.warning(f"Failed to clear database session: {e}")
             
             log_conversation_cleared(session_id)
             log_feature_used(session_id, "conversation_clear")
@@ -500,17 +738,69 @@ async def clear_session(session_id: str):
 @app.get("/health")
 async def health_check():
     try:
-        return {
+        health_info = {
             "status": "healthy",
             "timestamp": datetime.now(),
             "active_sessions": len(conversations),
-            "teacher": "AI math teacher running efficiently"
+            "teacher": "AI math teacher running efficiently",
+            "database": "disconnected"
         }
+        
+        if math_teacher.db_service:
+            try:
+                stats = math_teacher.db_service.get_system_stats()
+                health_info["database"] = "connected"
+                health_info["database_sessions"] = stats.get("total_sessions", 0)
+                health_info["database_messages"] = stats.get("total_messages", 0)
+            except Exception as e:
+                health_info["database"] = f"error: {str(e)}"
+        
+        return health_info
     except Exception as e:
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Artifact Endpoints
+# Database-specific endpoints
+@app.get("/admin/stats")
+async def get_database_stats():
+    """Get comprehensive database statistics"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        stats = math_teacher.db_service.get_system_stats()
+        return stats
+    except Exception as e:
+        math_logger.log_error(None, e, "get_database_stats")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/sync")
+async def sync_memory_to_database():
+    """Manually sync in-memory conversations to database"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        sync_result = sync_in_memory_to_db(conversations)
+        return {"message": "Sync completed", "result": sync_result}
+    except Exception as e:
+        math_logger.log_error(None, e, "sync_memory_to_database")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/cleanup")
+async def cleanup_old_data(days_old: int = 90):
+    """Clean up old archived data"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        cleanup_result = math_teacher.db_service.cleanup_old_data(days_old)
+        return {"message": "Cleanup completed", "result": cleanup_result}
+    except Exception as e:
+        math_logger.log_error(None, e, "cleanup_old_data")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Keep existing artifact endpoints unchanged
 @app.post("/artifacts/create")
 async def create_artifact(request: Dict[str, Any]):
     try:
@@ -528,6 +818,20 @@ async def create_artifact(request: Dict[str, Any]):
                     x_max=content.get("x_max", 10),
                     title=title
                 )
+                
+                # Also store in database if available
+                if math_teacher.db_service:
+                    try:
+                        math_teacher.db_service.create_artifact(
+                            session_id=session_id,
+                            artifact_type=artifact_type,
+                            title=title,
+                            content=content,
+                            artifact_id=artifact_id
+                        )
+                    except Exception as e:
+                        math_logger.logger.warning(f"Failed to store artifact in database: {e}")
+                
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown artifact type: {artifact_type}")
             
@@ -545,16 +849,29 @@ async def create_artifact(request: Dict[str, Any]):
 @app.get("/artifacts/{artifact_id}")
 async def get_artifact(artifact_id: str):
     try:
+        # Try in-memory first
         artifact = artifact_generator.get_artifact(artifact_id)
-        if not artifact:
-            raise HTTPException(status_code=404, detail="Artifact not found")
+        if artifact:
+            log_feature_used(artifact.session_id, "artifact_accessed", {
+                "artifact_id": artifact_id,
+                "type": artifact.metadata.type
+            })
+            return artifact
         
-        log_feature_used(artifact.session_id, "artifact_accessed", {
-            "artifact_id": artifact_id,
-            "type": artifact.metadata.type
-        })
+        # Try database if available
+        if math_teacher.db_service:
+            try:
+                db_artifact = math_teacher.db_service.get_artifact(artifact_id)
+                if db_artifact:
+                    log_feature_used(None, "artifact_accessed_db", {
+                        "artifact_id": artifact_id,
+                        "type": db_artifact.get("artifact_type")
+                    })
+                    return db_artifact
+            except Exception as e:
+                math_logger.logger.warning(f"Database artifact lookup failed: {e}")
         
-        return artifact
+        raise HTTPException(status_code=404, detail="Artifact not found")
         
     except HTTPException:
         raise
@@ -566,17 +883,30 @@ async def get_artifact(artifact_id: str):
 async def get_session_artifacts(session_id: str):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/artifacts", "GET"):
-            artifacts = artifact_generator.list_session_artifacts(session_id)
+            # Get in-memory artifacts
+            memory_artifacts = artifact_generator.list_session_artifacts(session_id)
+            
+            result = {
+                "session_id": session_id,
+                "memory_artifacts": memory_artifacts,
+                "database_artifacts": [],
+                "total_count": len(memory_artifacts)
+            }
+            
+            # Get database artifacts if available
+            if math_teacher.db_service:
+                try:
+                    db_artifacts = math_teacher.db_service.get_session_artifacts(session_id)
+                    result["database_artifacts"] = db_artifacts
+                    result["total_count"] += len(db_artifacts)
+                except Exception as e:
+                    math_logger.logger.warning(f"Database artifacts lookup failed: {e}")
             
             log_feature_used(session_id, "artifacts_listed", {
-                "artifact_count": len(artifacts)
+                "artifact_count": result["total_count"]
             })
             
-            return {
-                "session_id": session_id,
-                "artifacts": artifacts,
-                "count": len(artifacts)
-            }
+            return result
             
     except Exception as e:
         math_logger.log_error(session_id, e, "get_session_artifacts")
@@ -588,13 +918,25 @@ async def update_artifact_status(artifact_id: str, status_data: Dict[str, Any]):
         status = ArtifactStatus(status_data.get("status"))
         error_message = status_data.get("error_message")
         
+        # Update in-memory artifact
         artifact = artifact_generator.get_artifact(artifact_id)
-        if not artifact:
+        if artifact:
+            artifact_generator.update_artifact_status(artifact_id, status, error_message)
+            session_id = artifact.session_id
+        else:
+            session_id = None
+        
+        # Update database artifact if available
+        if math_teacher.db_service:
+            try:
+                math_teacher.db_service.update_artifact_status(artifact_id, status.value, error_message)
+            except Exception as e:
+                math_logger.logger.warning(f"Failed to update artifact status in database: {e}")
+        
+        if not artifact and not (math_teacher.db_service and math_teacher.db_service.get_artifact(artifact_id)):
             raise HTTPException(status_code=404, detail="Artifact not found")
         
-        artifact_generator.update_artifact_status(artifact_id, status, error_message)
-        
-        log_feature_used(artifact.session_id, "artifact_status_updated", {
+        log_feature_used(session_id, "artifact_status_updated", {
             "artifact_id": artifact_id,
             "new_status": status,
             "has_error": bool(error_message)
