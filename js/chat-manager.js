@@ -376,6 +376,28 @@ class ChatManager {
         }
     }
 
+    async createNewChatWithSession(sessionId, title = null) {
+        const chatId = `chat_${Date.now()}_${++this.chatCounter}`;
+        const defaultTitle = title || `Math Session ${this.chatCounter}`;
+        
+        const chat = {
+            id: chatId,
+            title: defaultTitle,
+            sessionId: sessionId, // Use existing session
+            messages: [],
+            createdAt: new Date(),
+            lastActive: new Date()
+        };
+    
+        this.chats.set(chatId, chat);
+        this.addChatToUI(chat);
+        this.switchToChat(chatId);
+        this.saveChats();
+        
+        console.log(`✓ Created chat with existing session: ${sessionId.slice(0, 8)}...`);
+        return chatId;
+    }
+
     handleResize() {
         const container = document.querySelector('.container');
         const sidebar = document.querySelector('.chat-sidebar');
@@ -481,7 +503,16 @@ class ChatManager {
             
             // Create first chat if none exist
             if (this.chats.size === 0) {
-                this.createNewChat('Welcome');
+                // Check if math interface already has a session we can use
+                const existingSessionId = loadFromLocalStorage('current_session_id', null);
+                
+                if (existingSessionId) {
+                    // Use the existing session instead of creating a new one
+                    this.createNewChatWithSession(existingSessionId, 'Restored Session');
+                } else {
+                    // Only create new if no existing session at all
+                    this.createNewChat('Welcome');
+                }
             }
             
         } catch (error) {
@@ -489,6 +520,7 @@ class ChatManager {
             this.createNewChat('Welcome');
         }
     }
+
 
     // Auto-generate chat titles based on first message
     generateChatTitle(firstMessage) {

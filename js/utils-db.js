@@ -329,6 +329,26 @@ function enableDatabaseSync() {
     });
 }
 
+function clearAllDataCompletely() {
+    // Set a flag to prevent auto-restore
+    localStorage.setItem('prevent_restore', 'true');
+    
+    // Clear all data
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Set the flag again (since clear() removed it)
+    localStorage.setItem('prevent_restore', 'true');
+    
+    console.log('✓ All data cleared, auto-restore disabled');
+    
+    // Reload page to start fresh
+    location.reload();
+}
+
+// Make it globally available
+window.clearAllDataCompletely = clearAllDataCompletely;
+
 // ===== HEALTH CHECK =====
 async function checkServerHealth() {
     try {
