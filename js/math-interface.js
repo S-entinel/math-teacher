@@ -21,10 +21,14 @@ class MathInterface {
         try {
             this.setConnectionStatus('connecting');
             
-            // Use provided sessionId or get from chat manager
+            // Use provided sessionId or get from chat manager OR localStorage
             let targetSessionId = sessionId;
             if (!targetSessionId && this.chatManager) {
                 targetSessionId = this.chatManager.getCurrentSessionId();
+            }
+            // FALLBACK: Check localStorage directly if chatManager not ready yet
+            if (!targetSessionId) {
+                targetSessionId = loadFromLocalStorage('current_session_id', null);
             }
             
             if (targetSessionId) {
@@ -38,6 +42,7 @@ class MathInterface {
                 this.updateSessionDisplay(targetSessionId);
                 console.log(`✓ Using session: ${targetSessionId.slice(0, 8)}`);
             } else {
+                // Only create new session if no existing session found anywhere
                 const response = await fetch(`${this.apiUrl}/sessions/new`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
@@ -66,7 +71,6 @@ class MathInterface {
             this.enableInterface();
         }
     }
-    
     async getSessionStatus(sessionId) {
         try {
             const response = await fetch(`${this.apiUrl}/sessions/${sessionId}/status`);
