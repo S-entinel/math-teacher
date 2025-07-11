@@ -1,22 +1,31 @@
 #!/usr/bin/env python3
 """
-AI Math Teacher FastAPI Backend
-A web API for the AI math tutor using Google Gemini with SQLite database storage
+AI Math Teacher FastAPI Backend with Authentication
+A web API for the AI math tutor using Google Gemini with SQLite database storage and user authentication
 """
 
 import os
 import uuid
 from typing import List, Optional, Dict, Any
 from datetime import datetime
-from fastapi import FastAPI, HTTPException, Request, Depends
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException, Request, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 # Database imports
-from database import get_database, get_db_session
+from database import get_database, get_db_session, User
 from db_service import get_db_service, DatabaseService, ensure_session_exists_in_db, sync_in_memory_to_db
+
+# Authentication imports
+from auth_service import (
+    get_auth_service, AuthService, UserRegisterRequest, UserLoginRequest,
+    PasswordResetRequest, PasswordResetConfirm, PasswordChangeRequest,
+    UserProfileUpdate, AuthTokens, UserProfile, get_current_user_optional,
+    require_authenticated_user, extract_bearer_token
+)
 
 from artifact_system import (
     artifact_generator, ArtifactInstructionGenerator, 
@@ -32,56 +41,7 @@ from logging_system import (
 
 load_dotenv()
 
-app = FastAPI(
-    title="Math Teacher API",
-    description="Intelligent AI math tutor powered by Google Gemini with persistent storage",
-    version="1.1.0"  # Updated version for database integration
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Request/Response Models (keeping existing ones)
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-    timestamp: datetime = datetime.now()
-
-class ChatRequest(BaseModel):
-    message: str
-    session_id: Optional[str] = None
-    user_token: Optional[str] = None  # New: for user identification
-
-class ChatResponse(BaseModel):
-    response: str
-    session_id: str
-    timestamp: datetime = datetime.now()
-
-class SessionCreateResponse(BaseModel):
-    session_id: str
-    user_token: str  # New: return user token
-    created_at: datetime = datetime.now()
-
-class SessionStatusResponse(BaseModel):
-    session_id: str
-    exists: bool
-    created_at: Optional[datetime] = None
-    last_active: Optional[datetime] = None
-    message_count: int = 0
-
-class ConversationHistory(BaseModel):
-    session_id: str
-    messages: List[ChatMessage]
-    created_at: datetime
-    last_active: datetime
-
 # KEEP EXISTING IN-MEMORY STORAGE FOR COMPATIBILITY
-# This ensures existing functionality continues to work while we add database features
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -111,7 +71,15 @@ class MathTeacherAPI:
             math_logger.logger.warning(f"Database initialization failed, using in-memory only: {e}")
             self.db_service = None
         
-        math_logger.logger.info("Math Teacher API initialized successfully")
+        # Initialize authentication service
+        try:
+            self.auth_service = get_auth_service()
+            math_logger.logger.info("Authentication service initialized successfully")
+        except Exception as e:
+            math_logger.logger.warning(f"Authentication initialization failed: {e}")
+            self.auth_service = None
+        
+        math_logger.logger.info("Math Teacher API with Authentication initialized successfully")
     
     def get_system_prompt(self):
         # Keep existing system prompt unchanged
@@ -228,9 +196,11 @@ class MathTeacherAPI:
 
         return base_prompt
 
+    # ===== ENHANCED SESSION MANAGEMENT WITH AUTH =====
+    
     @log_performance("create_session")
-    def create_session(self, user_token: str = None) -> tuple[str, str]:
-        """Create a new session and return (session_id, user_token)"""
+    def create_session(self, user: Dict[str, Any] = None) -> tuple[str, str]:
+        """Create a new session for user (authenticated or anonymous)"""
         session_id = str(uuid.uuid4())
         
         # Create in-memory session (existing functionality)
@@ -238,33 +208,26 @@ class MathTeacherAPI:
             'chat_session': self.model.start_chat(history=[]),
             'messages': [],
             'created_at': datetime.now(),
-            'last_active': datetime.now()
+            'last_active': datetime.now(),
+            'user_id': user.get('id') if user else None
         }
         
         # Also create in database if available
-        if self.db_service:
+        if self.db_service and user:
             try:
-                # Get or create user
-                user = self.db_service.get_or_create_user(user_token)
-                user_token = user['session_token']
-                
-                # Create database session
                 db_session = self.db_service.create_chat_session(
-                    user_id=user['id'],
+                    user_id=user.get('id'),
                     session_id=session_id,
                     title="New Math Session"
                 )
-                
                 math_logger.logger.info(f"Created session in database: {session_id}")
-                
             except Exception as e:
                 math_logger.logger.warning(f"Failed to create database session: {e}")
-                # Continue with in-memory only
-                user_token = user_token or str(uuid.uuid4())
-        else:
-            user_token = user_token or str(uuid.uuid4())
+        
+        user_token = user.get('session_token') if user else str(uuid.uuid4())
         
         math_logger.set_session_context(session_id, {
+            'user_id': user.get('id') if user else None,
             'user_token': user_token,
             'session_type': 'new'
         })
@@ -310,20 +273,21 @@ class MathTeacherAPI:
         }
 
     @log_performance("ensure_session_exists")
-    def ensure_session_exists(self, session_id: str, user_token: str = None) -> tuple[str, str]:
+    def ensure_session_exists(self, session_id: str, user: Dict[str, Any] = None) -> tuple[str, str]:
         """Ensure session exists in both memory and database"""
         # Check if session exists in memory
         if session_id and session_id in conversations:
             conversations[session_id]['last_active'] = datetime.now()
             
             # Ensure it also exists in database
-            if self.db_service:
+            if self.db_service and user:
                 try:
                     ensure_session_exists_in_db(session_id)
                 except Exception as e:
                     math_logger.logger.warning(f"Failed to ensure database session: {e}")
             
-            return session_id, user_token or str(uuid.uuid4())
+            user_token = user.get('session_token') if user else str(uuid.uuid4())
+            return session_id, user_token
         
         # Check if session exists in database only
         if self.db_service and session_id:
@@ -335,10 +299,12 @@ class MathTeacherAPI:
                         'chat_session': self.model.start_chat(history=[]),
                         'messages': [],
                         'created_at': datetime.fromisoformat(db_session['created_at']),
-                        'last_active': datetime.now()
+                        'last_active': datetime.now(),
+                        'user_id': user.get('id') if user else None
                     }
                     
                     # Load messages from database
+                    from database import ChatMessage as DBChatMessage
                     db_messages = self.db_service.get_session_messages(session_id)
                     for msg in db_messages:
                         conversations[session_id]['messages'].append(
@@ -349,63 +315,23 @@ class MathTeacherAPI:
                             )
                         )
                     
+                    user_token = user.get('session_token') if user else str(uuid.uuid4())
                     log_session_restored(session_id, len(db_messages))
-                    return session_id, user_token or str(uuid.uuid4())
+                    return session_id, user_token
                     
             except Exception as e:
                 math_logger.logger.warning(f"Failed to restore session from database: {e}")
         
         # Create new session if it doesn't exist anywhere
-        if session_id:
-            # Create with specific session_id
-            conversations[session_id] = {
-                'chat_session': self.model.start_chat(history=[]),
-                'messages': [],
-                'created_at': datetime.now(),
-                'last_active': datetime.now()
-            }
-            
-            if self.db_service:
-                try:
-                    user = self.db_service.get_or_create_user(user_token)
-                    user_token = user['session_token']
-                    
-                    self.db_service.create_chat_session(
-                        user_id=user['id'],
-                        session_id=session_id,
-                        title="Restored Session"
-                    )
-                except Exception as e:
-                    math_logger.logger.warning(f"Failed to create database session: {e}")
-                    user_token = user_token or str(uuid.uuid4())
-            
-            math_logger.set_session_context(session_id, {
-                'session_type': 'restored',
-                'user_token': user_token
-            })
-            
-            log_session_restored(session_id, 0)
-            return session_id, user_token or str(uuid.uuid4())
-        else:
-            # Create entirely new session
-            return self.create_session(user_token)
-
-    @log_performance("get_or_create_session")
-    def get_or_create_session(self, session_id: Optional[str] = None, user_token: str = None) -> tuple[str, str]:
-        """Get existing session or create new one"""
-        if session_id and session_id in conversations:
-            conversations[session_id]['last_active'] = datetime.now()
-            return session_id, user_token or str(uuid.uuid4())
-        
-        return self.create_session(user_token)
+        return self.create_session(user)
 
     @log_performance("send_message")
-    def send_message(self, message: str, session_id: str, user_token: str = None) -> str:
+    def send_message(self, message: str, session_id: str, user: Dict[str, Any] = None) -> str:
         """Send message and store in both memory and database"""
         import time
         start_time = time.time()
         
-        session_id, user_token = self.ensure_session_exists(session_id, user_token)
+        session_id, user_token = self.ensure_session_exists(session_id, user)
         
         if session_id not in conversations:
             raise ValueError("Session not found")
@@ -480,12 +406,15 @@ class MathTeacherAPI:
                 return "Hmph, looks like the API is being overloaded right now. Try again in a minute - I don't have infinite processing power, you know."
             
             raise HTTPException(status_code=500, detail=f"Error communicating with AI: {error_msg}")
+        
 
 # Initialize API
 math_teacher = MathTeacherAPI()
 
-@app.on_event("startup")
-async def startup_event():
+# Lifespan event handler (replaces on_event)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     log_startup()
     
     # Sync any existing in-memory conversations to database
@@ -495,9 +424,10 @@ async def startup_event():
             math_logger.logger.info(f"Startup sync completed: {sync_result}")
         except Exception as e:
             math_logger.logger.warning(f"Startup sync failed: {e}")
-
-@app.on_event("shutdown")
-async def shutdown_event():
+    
+    yield
+    
+    # Shutdown
     # Sync conversations to database before shutdown
     if math_teacher.db_service and conversations:
         try:
@@ -508,36 +438,335 @@ async def shutdown_event():
     
     log_shutdown()
 
-# API Endpoints (updated to support database)
+# Initialize FastAPI with lifespan
+app = FastAPI(
+    title="Math Teacher API with Authentication",
+    description="Intelligent AI math tutor powered by Google Gemini with persistent storage and user authentication",
+    version="1.2.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Request/Response Models (keeping existing ones + new auth models)
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: datetime = datetime.now()
+
+class ChatRequest(BaseModel):
+    message: str
+    session_id: Optional[str] = None
+    user_token: Optional[str] = None  # For backward compatibility
+
+class ChatResponse(BaseModel):
+    response: str
+    session_id: str
+    timestamp: datetime = datetime.now()
+
+class SessionCreateResponse(BaseModel):
+    session_id: str
+    user_token: str  # For backward compatibility
+    created_at: datetime = datetime.now()
+
+class SessionStatusResponse(BaseModel):
+    session_id: str
+    exists: bool
+    created_at: Optional[datetime] = None
+    last_active: Optional[datetime] = None
+    message_count: int = 0
+
+class ConversationHistory(BaseModel):
+    session_id: str
+    messages: List[ChatMessage]
+    created_at: datetime
+    last_active: datetime
+
+# New authentication models
+class AnonymousUserResponse(BaseModel):
+    user: dict
+    session_token: str
+
+class SessionValidationRequest(BaseModel):
+    session_token: str
+
+# Helper function to get user from request
+def get_user_from_request(
+    authorization: str = Header(None),
+    x_user_token: str = Header(None, alias="X-User-Token")
+) -> Optional[Dict[str, Any]]:
+    """Get user from either JWT token or legacy session token"""
+    if not math_teacher.auth_service:
+        return None
+    
+    return get_current_user_optional(authorization, x_user_token)
+
+# ===== AUTHENTICATION ENDPOINTS =====
+
+@app.post("/auth/register", response_model=dict)
+async def register_user(request: UserRegisterRequest):
+    """Register a new user or upgrade anonymous user"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user, tokens = math_teacher.auth_service.register_user(request)
+        
+        return {
+            "user": user.to_dict(),
+            "tokens": tokens.dict(),
+            "message": "Registration successful"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "register_user")
+        raise HTTPException(status_code=500, detail="Registration failed")
+
+@app.post("/auth/login", response_model=dict)
+async def login_user(request: UserLoginRequest):
+    """Authenticate user and return tokens"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user, tokens = math_teacher.auth_service.login_user(request)
+        
+        return {
+            "user": user.to_dict(),
+            "tokens": tokens.dict(),
+            "message": "Login successful"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "login_user")
+        raise HTTPException(status_code=500, detail="Login failed")
+
+@app.post("/auth/refresh", response_model=AuthTokens)
+async def refresh_token(request: dict):
+    """Refresh access token using refresh token"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        refresh_token = request.get("refresh_token")
+        if not refresh_token:
+            raise HTTPException(status_code=400, detail="Refresh token required")
+        
+        tokens = math_teacher.auth_service.refresh_access_token(refresh_token)
+        return tokens
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "refresh_token")
+        raise HTTPException(status_code=500, detail="Token refresh failed")
+
+@app.post("/auth/logout")
+async def logout_user(authorization: str = Header(None)):
+    """Logout user (invalidate tokens)"""
+    try:
+        # For now, just return success since JWT tokens are stateless
+        # In production, you might want to maintain a blacklist
+        return {"message": "Logout successful"}
+    except Exception as e:
+        math_logger.log_error(None, e, "logout_user")
+        raise HTTPException(status_code=500, detail="Logout failed")
+
+@app.get("/auth/me", response_model=UserProfile)
+async def get_current_user(authorization: str = Header(None)):
+    """Get current user profile"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user = require_authenticated_user(authorization)
+        return math_teacher.auth_service.get_user_profile(user.id)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "get_current_user")
+        raise HTTPException(status_code=500, detail="Failed to get user profile")
+
+@app.put("/auth/profile", response_model=UserProfile)
+async def update_user_profile(
+    request: UserProfileUpdate,
+    authorization: str = Header(None)
+):
+    """Update user profile"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user = require_authenticated_user(authorization)
+        return math_teacher.auth_service.update_user_profile(user.id, request)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "update_user_profile")
+        raise HTTPException(status_code=500, detail="Profile update failed")
+
+@app.post("/auth/password-reset")
+async def request_password_reset(request: PasswordResetRequest):
+    """Request password reset email"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        success = math_teacher.auth_service.request_password_reset(request)
+        return {"message": "If email exists, reset link has been sent"}
+        
+    except Exception as e:
+        math_logger.log_error(None, e, "request_password_reset")
+        return {"message": "If email exists, reset link has been sent"}
+
+@app.post("/auth/password-reset/confirm")
+async def confirm_password_reset(request: PasswordResetConfirm):
+    """Confirm password reset with token"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        success = math_teacher.auth_service.reset_password(request)
+        return {"message": "Password reset successful"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "confirm_password_reset")
+        raise HTTPException(status_code=500, detail="Password reset failed")
+
+@app.post("/auth/change-password")
+async def change_password(
+    request: PasswordChangeRequest,
+    authorization: str = Header(None)
+):
+    """Change password for authenticated user"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user = require_authenticated_user(authorization)
+        success = math_teacher.auth_service.change_password(user.id, request)
+        return {"message": "Password changed successfully"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "change_password")
+        raise HTTPException(status_code=500, detail="Password change failed")
+
+@app.post("/auth/anonymous", response_model=AnonymousUserResponse)
+async def create_anonymous_user():
+    """Create anonymous user session"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user, session_token = math_teacher.auth_service.get_or_create_anonymous_user()
+        
+        return AnonymousUserResponse(
+            user=user.to_dict(),
+            session_token=session_token
+        )
+        
+    except Exception as e:
+        math_logger.log_error(None, e, "create_anonymous_user")
+        raise HTTPException(status_code=500, detail="Failed to create anonymous user")
+
+@app.post("/auth/validate-session")
+async def validate_session_token(request: SessionValidationRequest):
+    """Validate legacy session token"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        user = math_teacher.auth_service.validate_session_token(request.session_token)
+        
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid session token")
+        
+        return {"user": user.to_dict(), "valid": True}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        math_logger.log_error(None, e, "validate_session_token")
+        raise HTTPException(status_code=500, detail="Session validation failed")
+
+@app.get("/auth/check-email/{email}")
+async def check_email_availability(email: str):
+    """Check if email is available for registration"""
+    try:
+        if not math_teacher.auth_service:
+            raise HTTPException(status_code=503, detail="Authentication service not available")
+        
+        available = math_teacher.auth_service.is_email_available(email)
+        return {"email": email, "available": available}
+        
+    except Exception as e:
+        math_logger.log_error(None, e, "check_email_availability")
+        raise HTTPException(status_code=500, detail="Email check failed")
+
+# ===== CORE API ENDPOINTS (UPDATED WITH AUTH) =====
+
 @app.get("/")
 async def root():
     return {
-        "message": "Math Teacher API - Intelligent mathematical guidance with persistent storage",
-        "version": "1.1.0",
+        "message": "Math Teacher API - Intelligent mathematical guidance with authentication",
+        "version": "1.2.0",
         "teacher": "AI Math Tutor - Direct, efficient, and knowledgeable",
-        "features": ["In-memory sessions", "Database persistence", "Interactive graphs", "Chat history"],
+        "features": [
+            "User authentication and profiles",
+            "In-memory sessions with database persistence", 
+            "Interactive graphs and artifacts",
+            "Chat history and session management",
+            "Anonymous and registered user support"
+        ],
         "endpoints": {
-            "chat": "/chat",
-            "create_session": "/sessions/new",
-            "session_status": "/sessions/{session_id}/status",
-            "ensure_session": "/sessions/{session_id}/ensure",
-            "history": "/history/{session_id}",
-            "sessions": "/sessions",
-            "database_stats": "/admin/stats"
+            "authentication": {
+                "register": "/auth/register",
+                "login": "/auth/login", 
+                "logout": "/auth/logout",
+                "profile": "/auth/me",
+                "refresh": "/auth/refresh"
+            },
+            "chat": {
+                "chat": "/chat",
+                "create_session": "/sessions/new",
+                "session_status": "/sessions/{session_id}/status",
+                "history": "/history/{session_id}"
+            },
+            "admin": {
+                "stats": "/admin/stats",
+                "health": "/health"
+            }
         }
     }
 
 @app.post("/sessions/new", response_model=SessionCreateResponse)
-async def create_new_session(request: Request):
+async def create_new_session(
+    request: Request,
+    user: User = Depends(get_user_from_request)
+):
     try:
         with log_request_context(None, "/sessions/new", "POST"):
-            user_token = request.headers.get("X-User-Token")
-            session_id, user_token = math_teacher.create_session(user_token)
+            session_id, user_token = math_teacher.create_session(user)
             
             user_agent = request.headers.get("user-agent", "unknown")
             math_logger.set_session_context(session_id, {
                 'user_agent': user_agent,
                 'session_type': 'new',
+                'user_id': user.id if user else None,
                 'user_token': user_token
             })
             
@@ -559,11 +788,14 @@ async def get_session_status(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/sessions/{session_id}/ensure", response_model=SessionCreateResponse)
-async def ensure_session_exists(session_id: str, request: Request):
+async def ensure_session_exists(
+    session_id: str, 
+    request: Request,
+    user: User = Depends(get_user_from_request)
+):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/ensure", "POST"):
-            user_token = request.headers.get("X-User-Token")
-            ensured_session_id, user_token = math_teacher.ensure_session_exists(session_id, user_token)
+            ensured_session_id, user_token = math_teacher.ensure_session_exists(session_id, user)
             
             session_data = conversations.get(ensured_session_id, {})
             created_at = session_data.get('created_at', datetime.now())
@@ -579,16 +811,24 @@ async def ensure_session_exists(session_id: str, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_with_teacher(request: ChatRequest):
+async def chat_with_teacher(
+    request: ChatRequest,
+    user: User = Depends(get_user_from_request)
+):
     try:
         with log_request_context(request.session_id, "/chat", "POST"):
-            session_id, user_token = math_teacher.get_or_create_session(request.session_id, request.user_token)
+            # Get or create session for user
+            if request.session_id:
+                session_id, user_token = math_teacher.ensure_session_exists(request.session_id, user)
+            else:
+                session_id, user_token = math_teacher.create_session(user)
             
-            response = math_teacher.send_message(request.message, session_id, user_token)
+            response = math_teacher.send_message(request.message, session_id, user)
             
             log_feature_used(session_id, "chat_message", {
                 'message_length': len(request.message),
-                'response_length': len(response)
+                'response_length': len(response),
+                'user_authenticated': user is not None and user.account_type != 'anonymous'
             })
             
             return ChatResponse(
@@ -601,9 +841,18 @@ async def chat_with_teacher(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/history/{session_id}")
-async def get_conversation_history(session_id: str):
+async def get_conversation_history(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_user_from_request)
+):
     try:
         with log_request_context(session_id, f"/history/{session_id}", "GET"):
+            # Check if user has access to this session
+            if user and math_teacher.db_service:
+                db_session = math_teacher.db_service.get_chat_session(session_id)
+                if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'):
+                    raise HTTPException(status_code=403, detail="Access denied to this session")
+            
             # Try memory first
             if session_id in conversations:
                 session_data = conversations[session_id]
@@ -681,9 +930,18 @@ async def list_sessions():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.delete("/sessions/{session_id}")
-async def delete_session(session_id: str):
+async def delete_session(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_user_from_request)
+):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
+            # Check session ownership for authenticated users
+            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:
+                db_session = math_teacher.db_service.get_chat_session(session_id)
+                if db_session and db_session.get('user_id') != user.get('id'):
+                    raise HTTPException(status_code=403, detail="Access denied to this session")
+            
             deleted_from_memory = False
             deleted_from_db = False
             
@@ -704,17 +962,29 @@ async def delete_session(session_id: str):
             
             log_feature_used(session_id, "session_delete")
             return {"message": f"Session {session_id} deleted", "memory": deleted_from_memory, "database": deleted_from_db}
+    except HTTPException:
+        raise
     except Exception as e:
         math_logger.log_error(session_id, e, "delete_session")
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @app.post("/sessions/{session_id}/clear")
-async def clear_session(session_id: str):
+async def clear_session(
+    session_id: str,
+    user: User = Depends(get_user_from_request)
+):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/clear", "POST"):
+            # Check session ownership for authenticated users
+            if user and user.account_type != 'anonymous' and math_teacher.db_service:
+                db_session = math_teacher.db_service.get_chat_session(session_id)
+                if db_session and db_session.get('user_id') != user.id:
+                    raise HTTPException(status_code=403, detail="Access denied to this session")
+            
             # Clear from memory
             if session_id not in conversations:
-                session_id, _ = math_teacher.ensure_session_exists(session_id)
+                session_id, _ = math_teacher.ensure_session_exists(session_id, user)
             
             conversations[session_id]['chat_session'] = math_teacher.model.start_chat(history=[])
             conversations[session_id]['messages'] = []
@@ -731,6 +1001,8 @@ async def clear_session(session_id: str):
             log_feature_used(session_id, "conversation_clear")
             
             return {"message": f"Session {session_id} cleared"}
+    except HTTPException:
+        raise
     except Exception as e:
         math_logger.log_error(session_id, e, "clear_session")
         raise HTTPException(status_code=500, detail=str(e))
@@ -743,7 +1015,8 @@ async def health_check():
             "timestamp": datetime.now(),
             "active_sessions": len(conversations),
             "teacher": "AI math teacher running efficiently",
-            "database": "disconnected"
+            "database": "disconnected",
+            "authentication": "disabled"
         }
         
         if math_teacher.db_service:
@@ -755,52 +1028,16 @@ async def health_check():
             except Exception as e:
                 health_info["database"] = f"error: {str(e)}"
         
+        if math_teacher.auth_service:
+            health_info["authentication"] = "enabled"
+        
         return health_info
     except Exception as e:
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Database-specific endpoints
-@app.get("/admin/stats")
-async def get_database_stats():
-    """Get comprehensive database statistics"""
-    if not math_teacher.db_service:
-        raise HTTPException(status_code=503, detail="Database not available")
-    
-    try:
-        stats = math_teacher.db_service.get_system_stats()
-        return stats
-    except Exception as e:
-        math_logger.log_error(None, e, "get_database_stats")
-        raise HTTPException(status_code=500, detail=str(e))
+# ===== ARTIFACT ENDPOINTS =====
 
-@app.post("/admin/sync")
-async def sync_memory_to_database():
-    """Manually sync in-memory conversations to database"""
-    if not math_teacher.db_service:
-        raise HTTPException(status_code=503, detail="Database not available")
-    
-    try:
-        sync_result = sync_in_memory_to_db(conversations)
-        return {"message": "Sync completed", "result": sync_result}
-    except Exception as e:
-        math_logger.log_error(None, e, "sync_memory_to_database")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/admin/cleanup")
-async def cleanup_old_data(days_old: int = 90):
-    """Clean up old archived data"""
-    if not math_teacher.db_service:
-        raise HTTPException(status_code=503, detail="Database not available")
-    
-    try:
-        cleanup_result = math_teacher.db_service.cleanup_old_data(days_old)
-        return {"message": "Cleanup completed", "result": cleanup_result}
-    except Exception as e:
-        math_logger.log_error(None, e, "cleanup_old_data")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Keep existing artifact endpoints unchanged
 @app.post("/artifacts/create")
 async def create_artifact(request: Dict[str, Any]):
     try:
@@ -948,6 +1185,47 @@ async def update_artifact_status(artifact_id: str, status_data: Dict[str, Any]):
         raise
     except Exception as e:
         math_logger.log_error(None, e, "update_artifact_status")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== DATABASE ADMIN ENDPOINTS =====
+
+@app.get("/admin/stats")
+async def get_database_stats():
+    """Get comprehensive database statistics"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        stats = math_teacher.db_service.get_system_stats()
+        return stats
+    except Exception as e:
+        math_logger.log_error(None, e, "get_database_stats")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/sync")
+async def sync_memory_to_database():
+    """Manually sync in-memory conversations to database"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        sync_result = sync_in_memory_to_db(conversations)
+        return {"message": "Sync completed", "result": sync_result}
+    except Exception as e:
+        math_logger.log_error(None, e, "sync_memory_to_database")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/admin/cleanup")
+async def cleanup_old_data(days_old: int = 90):
+    """Clean up old archived data"""
+    if not math_teacher.db_service:
+        raise HTTPException(status_code=503, detail="Database not available")
+    
+    try:
+        cleanup_result = math_teacher.db_service.cleanup_old_data(days_old)
+        return {"message": "Cleanup completed", "result": cleanup_result}
+    except Exception as e:
+        math_logger.log_error(None, e, "cleanup_old_data")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

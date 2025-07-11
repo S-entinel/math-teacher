@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/components.css">
     <link rel="stylesheet" href="styles/chat-sidebar.css">
+    <link rel="stylesheet" href="styles/auth.css">
     <link rel="stylesheet" href="styles/responsive.css">
 </head>
 <body>
@@ -26,6 +27,7 @@
                 <span>█ MATH TERMINAL █</span>
             </div>
             <div class="header-actions">
+                <!-- Auth button or user menu will be inserted here by AuthManager -->
                 <button id="theme-toggle" class="header-btn" title="Toggle theme">
                     <span class="theme-icon">DARK</span>
                 </button>
@@ -127,7 +129,6 @@
                         <button class="symbol-btn" data-symbol="×">×</button>
                         <button class="symbol-btn" data-symbol="÷">÷</button>
                         <button class="symbol-btn" data-symbol="≠">≠</button>
-                        <button class="symbol-btn" data-symbol="≤">≤</button>
                         <button class="symbol-btn" data-symbol="≥">≥</button>
                         <button class="symbol-btn" data-symbol="≈">≈</button>
                         <button class="symbol-btn" data-symbol="≡">≡</button>
@@ -296,17 +297,25 @@
         </div>
     </div>
 
+    <!-- Load JavaScript in correct order -->
     <script src="js/mathjax-config.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-mml-chtml.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.26.0.min.js"></script>
     
+    <!-- Core utilities -->
     <script src="js/utils.js"></script>
     <script src="js/utils-db.js"></script>
+    
+    <!-- Authentication manager (load before other managers) -->
+    <script src="js/auth-manager.js"></script>
+    
+    <!-- Core application components -->
     <script src="js/chat-manager.js"></script>
     <script src="js/math-interface.js"></script>
     <script src="js/artifact-renderer.js"></script>
+    
+    <!-- Main application initialization -->
     <script src="js/app.js"></script>
-    <!-- <script src="js/app-db.js"></script> -->
 
 </body>
 </html>
