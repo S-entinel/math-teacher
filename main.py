@@ -813,6 +813,7 @@ async def ensure_session_exists(
         math_logger.log_error(session_id, e, "ensure_session_exists")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_teacher(
     request: ChatRequest,
@@ -904,72 +905,62 @@ async def get_conversation_history(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/sessions")
-async def list_sessions():
-    try:
-        with log_request_context(None, "/sessions", "GET"):
-            result = {
-                "memory_sessions": [
-                    {
-                        "session_id": sid,
-                        "created_at": data['created_at'],
-                        "last_active": data['last_active'],
-                        "message_count": len(data['messages'])
-                    }
-                    for sid, data in conversations.items()
-                ]
-            }
-            
-            # Add database sessions if available
-            if math_teacher.db_service:
-                try:
-                    stats = math_teacher.db_service.get_system_stats()
-                    result["database_stats"] = stats
-                except Exception as e:
-                    math_logger.logger.warning(f"Failed to get database stats: {e}")
-            
-            log_feature_used(None, "sessions_list")
-            return result
-    except Exception as e:
-        math_logger.log_error(None, e, "list_sessions")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.delete("/sessions/{session_id}")
-async def delete_session(
-    session_id: str,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
+async def list_user_sessions(
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)
 ):
     try:
-        with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
-            # Check session ownership for authenticated users
-            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  # FIXED: Use .get()
-                db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') != user.get('id'):  # FIXED: Use .get()
-                    raise HTTPException(status_code=403, detail="Access denied to this session")
-            
-            deleted_from_memory = False
-            deleted_from_db = False
-            
-            # Delete from memory
-            if session_id in conversations:
-                del conversations[session_id]
-                deleted_from_memory = True
-            
-            # Delete from database
-            if math_teacher.db_service:
-                try:
-                    deleted_from_db = math_teacher.db_service.delete_chat_session(session_id)
-                except Exception as e:
-                    math_logger.logger.warning(f"Failed to delete from database: {e}")
-            
-            if not deleted_from_memory and not deleted_from_db:
-                return {"message": f"Session {session_id} not found (already deleted)"}
-            
-            log_feature_used(session_id, "session_delete")
-            return {"message": f"Session {session_id} deleted", "memory": deleted_from_memory, "database": deleted_from_db}
-    except HTTPException:
-        raise
+        result = {
+            "memory_sessions": [
+                {
+                    "session_id": sid,
+                    "created_at": data['created_at'],
+                    "last_active": data['last_active'],
+                    "message_count": len(data['messages'])
+                }
+                for sid, data in conversations.items()
+                if not user or data.get('user_id') == user.get('id')
+            ]
+        }
+        
+        if math_teacher.db_service and user:
+            try:
+                user_sessions = math_teacher.db_service.get_user_chat_sessions(user.get('id'), limit=100)
+                result["database_sessions"] = user_sessions
+            except Exception as e:
+                math_logger.logger.warning(f"Failed to get database sessions: {e}")
+        
+        return result
     except Exception as e:
-        math_logger.log_error(session_id, e, "delete_session")
+        math_logger.log_error(None, e, "list_user_sessions")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/sessions/{session_id}")
+async def update_session(
+    session_id: str,
+    updates: Dict[str, Any],
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)
+):
+    try:
+        if session_id in conversations:
+            if updates.get('title'):
+                # Update in-memory title tracking if needed
+                pass
+            if updates.get('last_active'):
+                conversations[session_id]['last_active'] = datetime.fromisoformat(updates['last_active'])
+        
+        if math_teacher.db_service:
+            try:
+                success = math_teacher.db_service.update_chat_session(session_id, updates)
+                if success:
+                    return {"message": "Session updated", "session_id": session_id}
+            except Exception as e:
+                math_logger.logger.warning(f"Failed to update database session: {e}")
+        
+        return {"message": "Session updated in memory", "session_id": session_id}
+        
+    except Exception as e:
+        math_logger.log_error(session_id, e, "update_session")
         raise HTTPException(status_code=500, detail=str(e))
     
 

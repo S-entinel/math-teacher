@@ -251,7 +251,12 @@ class MathInterface {
         try {
             const response = await fetch(`${this.apiUrl}/sessions/${this.sessionId}/clear`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': window.authManager && window.authManager.getAccessToken() ? 
+                        `Bearer ${window.authManager.getAccessToken()}` : '',
+                    'X-User-Token': window.authManager ? window.authManager.getCurrentUser()?.session_token : ''
+                }
             });
             
             if (!response.ok) {
@@ -260,7 +265,6 @@ class MathInterface {
             
             this.resetConversationInterface();
             
-            // Clear chat manager's active chat messages
             if (this.chatManager) {
                 const currentChat = this.chatManager.getCurrentChat();
                 if (currentChat) {

@@ -145,6 +145,7 @@ class DatabaseService:
         except SQLAlchemyError as e:
             math_logger.log_error(None, e, f"get_user_chat_sessions_user_{user_id}")
             return []
+        
     
     def update_chat_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
         """Update chat session properties"""
@@ -170,6 +171,7 @@ class DatabaseService:
         except SQLAlchemyError as e:
             math_logger.log_error(session_id, e, "update_chat_session")
             return False
+        
     
     def delete_chat_session(self, session_id: str) -> bool:
         """Delete a chat session and all its messages/artifacts"""

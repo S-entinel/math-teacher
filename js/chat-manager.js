@@ -446,13 +446,36 @@ class ChatManager {
         }
     }
 
-    saveChats() {
+    async saveChats() {
+        if (!window.authManager) return;
+        
+        const currentUser = window.authManager.getCurrentUser();
+        if (!currentUser) return;
+        
         try {
-            const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
-            const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+            // Save each chat to the database
+            for (const [chatId, chat] of this.chats) {
+                if (!chat.sessionId) continue;
+                
+                // Update chat session in database
+                await fetch(`http://localhost:8000/sessions/${chat.sessionId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': currentUser.account_type !== 'anonymous' ? 
+                            `Bearer ${window.authManager.getAccessToken()}` : '',
+                        'X-User-Token': currentUser.session_token
+                    },
+                    body: JSON.stringify({
+                        title: chat.title,
+                        last_active: chat.lastActive.toISOString()
+                    })
+                });
+            }
             
-            // Use different storage keys for authenticated vs anonymous users
-            const storageKey = isAuthenticated ? `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
+            // Fallback localStorage for offline scenarios only
+            const storageKey = currentUser.account_type !== 'anonymous' ? 
+                `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
             
             const chatsData = {
                 chats: Array.from(this.chats.entries()).map(([id, chat]) => [id, {
@@ -466,41 +489,107 @@ class ChatManager {
                 }]),
                 activeChat: this.activeChat,
                 chatCounter: this.chatCounter,
-                userId: isAuthenticated ? currentUser.id : null
+                userId: currentUser.account_type !== 'anonymous' ? currentUser.id : null
             };
             
             localStorage.setItem(storageKey, JSON.stringify(chatsData));
+            
         } catch (error) {
             console.error('Failed to save chats:', error);
         }
     }
 
-    loadChats() {
+    async loadChats() {
+        if (!window.authManager) return;
+        
+        const currentUser = window.authManager.getCurrentUser();
+        if (!currentUser) {
+            this.createFirstChat();
+            return;
+        }
+        
         try {
-            const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
-            const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+            // Load from database first
+            const response = await fetch('http://localhost:8000/sessions', {
+                headers: {
+                    'Authorization': currentUser.account_type !== 'anonymous' ? 
+                        `Bearer ${window.authManager.getAccessToken()}` : '',
+                    'X-User-Token': currentUser.session_token
+                }
+            });
             
-            // Use different storage keys for authenticated vs anonymous users
-            const storageKey = isAuthenticated ? `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
-            
+            if (response.ok) {
+                const data = await response.json();
+                const sessions = data.database_sessions || [];
+                
+                this.chats.clear();
+                this.chatCounter = 0;
+                
+                for (const session of sessions) {
+                    const chatId = `chat_${session.session_id}`;
+                    const chat = {
+                        id: chatId,
+                        title: session.title || 'Math Session',
+                        sessionId: session.session_id,
+                        messages: [],
+                        createdAt: new Date(session.created_at),
+                        lastActive: new Date(session.last_active)
+                    };
+                    
+                    // Load messages for this session
+                    const messagesResponse = await fetch(`http://localhost:8000/history/${session.session_id}`, {
+                        headers: {
+                            'Authorization': currentUser.account_type !== 'anonymous' ? 
+                                `Bearer ${window.authManager.getAccessToken()}` : '',
+                            'X-User-Token': currentUser.session_token
+                        }
+                    });
+                    
+                    if (messagesResponse.ok) {
+                        const messageData = await messagesResponse.json();
+                        chat.messages = messageData.messages.map(msg => ({
+                            role: msg.role,
+                            content: msg.content,
+                            timestamp: new Date(msg.timestamp)
+                        }));
+                    }
+                    
+                    this.chats.set(chatId, chat);
+                    this.chatCounter++;
+                }
+                
+                // Sort by last active and add to UI
+                Array.from(this.chats.values())
+                    .sort((a, b) => b.lastActive - a.lastActive)
+                    .forEach(chat => this.addChatToUI(chat));
+                
+                if (this.chats.size > 0) {
+                    const firstChat = Array.from(this.chats.keys())[0];
+                    this.switchToChat(firstChat);
+                } else {
+                    this.createFirstChat();
+                }
+                
+                return;
+            }
+        } catch (error) {
+            console.error('Failed to load chats from database:', error);
+        }
+        
+        // Fallback to localStorage
+        this.loadChatsFromStorage();
+    }
+
+    loadChatsFromStorage() {
+        const currentUser = window.authManager.getCurrentUser();
+        const storageKey = currentUser && currentUser.account_type !== 'anonymous' ? 
+            `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
+        
+        try {
             const stored = localStorage.getItem(storageKey);
             if (stored) {
                 const chatsData = JSON.parse(stored);
                 
-                // Verify the data belongs to the current user context
-                if (isAuthenticated && chatsData.userId !== currentUser.id) {
-                    console.log('Chat data belongs to different user, starting fresh');
-                    this.createFirstChat();
-                    return;
-                }
-                
-                if (!isAuthenticated && chatsData.userId !== null) {
-                    console.log('Chat data belongs to authenticated user, starting fresh for anonymous');
-                    this.createFirstChat();
-                    return;
-                }
-                
-                // Restore chats
                 this.chats = new Map(chatsData.chats.map(([id, chat]) => [id, {
                     ...chat,
                     createdAt: new Date(chat.createdAt),
@@ -513,12 +602,10 @@ class ChatManager {
                 
                 this.chatCounter = chatsData.chatCounter || 0;
                 
-                // Add chats to UI
                 Array.from(this.chats.values())
                     .sort((a, b) => b.lastActive - a.lastActive)
                     .forEach(chat => this.addChatToUI(chat));
                 
-                // Restore active chat
                 if (chatsData.activeChat && this.chats.has(chatsData.activeChat)) {
                     this.switchToChat(chatsData.activeChat);
                 } else if (this.chats.size > 0) {
@@ -528,12 +615,12 @@ class ChatManager {
             } else {
                 this.createFirstChat();
             }
-            
         } catch (error) {
-            console.error('Failed to load chats:', error);
+            console.error('Failed to load chats from storage:', error);
             this.createFirstChat();
         }
     }
+    
     
     createFirstChat() {
         // Create first chat if none exist
