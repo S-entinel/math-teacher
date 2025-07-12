@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Authentication Migration Script for AI Math Teacher
+Authentication Migration Script for AI Math Teacher - FIXED VERSION
 Migrates existing database to support authentication features
 """
 
@@ -91,8 +91,8 @@ def migrate_to_auth():
             
         # Test authentication service
         auth_service = get_auth_service()
-        test_user, test_token = auth_service.get_or_create_anonymous_user()
-        print(f"✓ Authentication service working - test user {test_user['id']}")
+        test_user_dict, test_token = auth_service.get_or_create_anonymous_user()  # FIXED: This returns a dict
+        print(f"✓ Authentication service working - test user {test_user_dict['id']}")  # FIXED: Use dict access
         
         # Show final stats
         with db.get_session() as session:
@@ -178,12 +178,12 @@ def verify_migration():
         auth_service = get_auth_service()
         
         # Test anonymous user creation
-        anon_user, anon_token = auth_service.get_or_create_anonymous_user()
-        print(f"✓ Anonymous user creation working: {anon_user.account_type}")
+        anon_user_dict, anon_token = auth_service.get_or_create_anonymous_user()  # FIXED: Returns dict
+        print(f"✓ Anonymous user creation working: {anon_user_dict['account_type']}")  # FIXED: Use dict access
         
         # Test token validation
         validated_user = auth_service.validate_session_token(anon_token)
-        if validated_user and validated_user.id == anon_user.id:
+        if validated_user and validated_user['id'] == anon_user_dict['id']:  # FIXED: Use dict access
             print("✓ Session token validation working")
         else:
             print("❌ Session token validation failed")

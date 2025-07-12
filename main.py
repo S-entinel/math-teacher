@@ -209,14 +209,14 @@ class MathTeacherAPI:
             'messages': [],
             'created_at': datetime.now(),
             'last_active': datetime.now(),
-            'user_id': user.get('id') if user else None
+            'user_id': user.get('id') if user else None  # FIXED: Use .get()
         }
         
         # Also create in database if available
         if self.db_service and user:
             try:
                 db_session = self.db_service.create_chat_session(
-                    user_id=user.get('id'),
+                    user_id=user.get('id'),  # FIXED: Use .get()
                     session_id=session_id,
                     title="New Math Session"
                 )
@@ -224,10 +224,10 @@ class MathTeacherAPI:
             except Exception as e:
                 math_logger.logger.warning(f"Failed to create database session: {e}")
         
-        user_token = user.get('session_token') if user else str(uuid.uuid4())
+        user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
         
         math_logger.set_session_context(session_id, {
-            'user_id': user.get('id') if user else None,
+            'user_id': user.get('id') if user else None,  # FIXED: Use .get()
             'user_token': user_token,
             'session_type': 'new'
         })
@@ -286,7 +286,7 @@ class MathTeacherAPI:
                 except Exception as e:
                     math_logger.logger.warning(f"Failed to ensure database session: {e}")
             
-            user_token = user.get('session_token') if user else str(uuid.uuid4())
+            user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
             return session_id, user_token
         
         # Check if session exists in database only
@@ -300,7 +300,7 @@ class MathTeacherAPI:
                         'messages': [],
                         'created_at': datetime.fromisoformat(db_session['created_at']),
                         'last_active': datetime.now(),
-                        'user_id': user.get('id') if user else None
+                        'user_id': user.get('id') if user else None  # FIXED: Use .get()
                     }
                     
                     # Load messages from database
@@ -315,7 +315,7 @@ class MathTeacherAPI:
                             )
                         )
                     
-                    user_token = user.get('session_token') if user else str(uuid.uuid4())
+                    user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
                     log_session_restored(session_id, len(db_messages))
                     return session_id, user_token
                     
@@ -497,6 +497,7 @@ class SessionValidationRequest(BaseModel):
     session_token: str
 
 # Helper function to get user from request
+
 def get_user_from_request(
     authorization: str = Header(None),
     x_user_token: str = Header(None, alias="X-User-Token")
@@ -672,16 +673,18 @@ async def create_anonymous_user():
         if not math_teacher.auth_service:
             raise HTTPException(status_code=503, detail="Authentication service not available")
         
-        user, session_token = math_teacher.auth_service.get_or_create_anonymous_user()
+        user_dict, session_token = math_teacher.auth_service.get_or_create_anonymous_user()
         
         return AnonymousUserResponse(
-            user=user.to_dict(),
+            user=user_dict,  # FIXED: user_dict is already a dictionary, don't call .to_dict()
             session_token=session_token
         )
         
     except Exception as e:
         math_logger.log_error(None, e, "create_anonymous_user")
         raise HTTPException(status_code=500, detail="Failed to create anonymous user")
+    
+    
 
 @app.post("/auth/validate-session")
 async def validate_session_token(request: SessionValidationRequest):
@@ -756,7 +759,7 @@ async def root():
 @app.post("/sessions/new", response_model=SessionCreateResponse)
 async def create_new_session(
     request: Request,
-    user: User = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(None, "/sessions/new", "POST"):
@@ -766,7 +769,7 @@ async def create_new_session(
             math_logger.set_session_context(session_id, {
                 'user_agent': user_agent,
                 'session_type': 'new',
-                'user_id': user.id if user else None,
+                'user_id': user.get('id') if user else None,  # FIXED: Use .get()
                 'user_token': user_token
             })
             
@@ -791,7 +794,7 @@ async def get_session_status(session_id: str):
 async def ensure_session_exists(
     session_id: str, 
     request: Request,
-    user: User = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/ensure", "POST"):
@@ -813,7 +816,7 @@ async def ensure_session_exists(
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_teacher(
     request: ChatRequest,
-    user: User = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(request.session_id, "/chat", "POST"):
@@ -828,7 +831,7 @@ async def chat_with_teacher(
             log_feature_used(session_id, "chat_message", {
                 'message_length': len(request.message),
                 'response_length': len(response),
-                'user_authenticated': user is not None and user.account_type != 'anonymous'
+                'user_authenticated': user is not None and user.get('account_type') != 'anonymous'  # FIXED: Use .get()
             })
             
             return ChatResponse(
@@ -839,18 +842,19 @@ async def chat_with_teacher(
     except Exception as e:
         math_logger.log_error(request.session_id, e, "chat_with_teacher")
         raise HTTPException(status_code=500, detail=str(e))
+    
 
 @app.get("/history/{session_id}")
 async def get_conversation_history(
     session_id: str,
-    user: Dict[str, Any] = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(session_id, f"/history/{session_id}", "GET"):
             # Check if user has access to this session
             if user and math_teacher.db_service:
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'):
+                if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'):  # FIXED: Use .get()
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             # Try memory first
@@ -932,14 +936,14 @@ async def list_sessions():
 @app.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    user: Dict[str, Any] = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
             # Check session ownership for authenticated users
-            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:
+            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  # FIXED: Use .get()
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') != user.get('id'):
+                if db_session and db_session.get('user_id') != user.get('id'):  # FIXED: Use .get()
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             deleted_from_memory = False
@@ -972,14 +976,14 @@ async def delete_session(
 @app.post("/sessions/{session_id}/clear")
 async def clear_session(
     session_id: str,
-    user: User = Depends(get_user_from_request)
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
 ):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/clear", "POST"):
             # Check session ownership for authenticated users
-            if user and user.account_type != 'anonymous' and math_teacher.db_service:
+            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  # FIXED: Use .get()
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') != user.id:
+                if db_session and db_session.get('user_id') != user.get('id'):  # FIXED: Use .get()
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             # Clear from memory

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Authentication Service for AI Math Teacher
+Authentication Service for AI Math Teacher - FIXED VERSION
 Handles user registration, login, JWT tokens, and session management
 """
 
@@ -561,28 +561,34 @@ class AuthService:
     
     # ===== UTILITY METHODS =====
     
-    def get_or_create_anonymous_user(self, session_token: str = None) -> Tuple[User, str]:
-        """Get or create anonymous user (for backward compatibility)"""
+    def get_or_create_anonymous_user(self, session_token: str = None) -> Tuple[Dict[str, Any], str]:
+        """Get or create anonymous user (for backward compatibility) - FINAL FIX"""
         try:
             with self.get_session() as session:
-                user = ensure_user_exists(session, session_token)
-                # Create a detached copy of the user data
-                user_dict = user.to_dict()
+                user_obj = ensure_user_exists(session, session_token)
+                # FIXED: Ensure we return a dictionary, not an object
+                if hasattr(user_obj, 'to_dict'):
+                    user_dict = user_obj.to_dict()
+                else:
+                    # Already a dict
+                    user_dict = user_obj
+                    
                 session.commit()
-                return user_dict, user.session_token
+                
+                # Get session token from object or dict
+                if hasattr(user_obj, 'session_token'):
+                    token = user_obj.session_token
+                else:
+                    token = user_dict.get('session_token')
+                    
+                return user_dict, token
+                
         except SQLAlchemyError as e:
             math_logger.log_error(None, e, "get_or_create_anonymous_user")
             raise HTTPException(status_code=500, detail="Failed to create user session")
-    
-    def is_email_available(self, email: str) -> bool:
-        """Check if email address is available for registration"""
-        try:
-            with self.get_session() as session:
-                user = get_user_by_email(session, email)
-                return user is None
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, "is_email_available")
-            return False
+        except Exception as e:
+            math_logger.log_error(None, e, "get_or_create_anonymous_user")
+            raise HTTPException(status_code=500, detail="Failed to create user session")
     
     def validate_session_token(self, session_token: str) -> Optional[Dict[str, Any]]:
         """Validate legacy session token and return user data"""
