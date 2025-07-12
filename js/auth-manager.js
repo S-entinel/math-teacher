@@ -74,6 +74,9 @@ class AuthManager {
                 this.saveUserToken(data.user.session_token);
                 console.log('✓ Anonymous session created');
                 this.updateUIForAnonymousUser();
+                
+                // Notify of user context change
+                this.notifyUserContextChange();
             }
         } catch (error) {
             console.error('Failed to create anonymous session:', error);
@@ -96,6 +99,9 @@ class AuthManager {
         
         this.updateUIForAuthenticatedUser();
         this.scheduleTokenRefresh();
+        
+        // Notify of user context change
+        this.notifyUserContextChange();
     }
 
     clearAuthenticationState() {
@@ -107,6 +113,18 @@ class AuthManager {
         this.clearStoredAuth();
         this.clearTokenRefresh();
         this.updateUIForAnonymousUser();
+    }
+
+    notifyUserContextChange() {
+        // Notify chat manager of user context change
+        if (window.chatManager) {
+            window.chatManager.onUserContextChanged();
+        }
+        
+        // Clear any stored conversation data that might be cached
+        if (window.mathInterface) {
+            window.mathInterface.sessionId = null;
+        }
     }
 
     // ===== UI MANAGEMENT =====

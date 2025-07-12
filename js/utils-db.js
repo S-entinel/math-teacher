@@ -11,12 +11,21 @@ function setUserToken(token) {
 }
 
 function ensureUserToken() {
-    let token = getUserToken();
-    if (!token) {
-        token = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        setUserToken(token);
+    const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+    const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+    
+    if (isAuthenticated) {
+        // For authenticated users, use their session token
+        return currentUser.session_token;
+    } else {
+        // For anonymous users, use traditional token management
+        let token = getUserToken();
+        if (!token) {
+            token = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            setUserToken(token);
+        }
+        return token;
     }
-    return token;
 }
 
 // ===== API HELPERS WITH USER TOKEN =====

@@ -3,6 +3,12 @@
 // ===== LOCAL STORAGE CONVERSATION MANAGEMENT =====
 function saveConversationToStorage() {
     try {
+        const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+        const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        // Use different storage keys for authenticated vs anonymous users
+        const storageKey = isAuthenticated ? `math_conversation_${currentUser.id}` : 'math_conversation_anonymous';
+        
         const messages = [];
         const messageElements = document.querySelectorAll('.message');
         
@@ -21,10 +27,11 @@ function saveConversationToStorage() {
         const conversationData = {
             messages: messages,
             sessionId: window.mathInterface ? window.mathInterface.sessionId : null,
-            lastSaved: new Date().toISOString()
+            lastSaved: new Date().toISOString(),
+            userId: isAuthenticated ? currentUser.id : null
         };
         
-        saveToLocalStorage('math_conversation', conversationData);
+        saveToLocalStorage(storageKey, conversationData);
         return true;
     } catch (error) {
         console.error('Failed to save conversation:', error);
@@ -34,9 +41,26 @@ function saveConversationToStorage() {
 
 function loadConversationFromStorage() {
     try {
-        const conversationData = loadFromLocalStorage('math_conversation', null);
+        const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+        const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        // Use different storage keys for authenticated vs anonymous users
+        const storageKey = isAuthenticated ? `math_conversation_${currentUser.id}` : 'math_conversation_anonymous';
+        
+        const conversationData = loadFromLocalStorage(storageKey, null);
         
         if (!conversationData || !conversationData.messages || conversationData.messages.length === 0) {
+            return false;
+        }
+        
+        // Verify the data belongs to the current user context
+        if (isAuthenticated && conversationData.userId !== currentUser.id) {
+            console.log('Conversation data belongs to different user, not loading');
+            return false;
+        }
+        
+        if (!isAuthenticated && conversationData.userId !== null) {
+            console.log('Conversation data belongs to authenticated user, not loading for anonymous');
             return false;
         }
         
@@ -109,8 +133,14 @@ function updateSessionDisplay(sessionId) {
 
 function clearStoredConversation() {
     try {
-        localStorage.removeItem('math_conversation');
-        console.log('✓ Stored conversation cleared');
+        const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+        const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        // Use different storage keys for authenticated vs anonymous users
+        const storageKey = isAuthenticated ? `math_conversation_${currentUser.id}` : 'math_conversation_anonymous';
+        
+        localStorage.removeItem(storageKey);
+        console.log('✓ Stored conversation cleared for current user context');
         return true;
     } catch (error) {
         console.error('Failed to clear stored conversation:', error);

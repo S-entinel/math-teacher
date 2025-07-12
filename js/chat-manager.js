@@ -448,6 +448,12 @@ class ChatManager {
 
     saveChats() {
         try {
+            const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+            const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+            
+            // Use different storage keys for authenticated vs anonymous users
+            const storageKey = isAuthenticated ? `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
+            
             const chatsData = {
                 chats: Array.from(this.chats.entries()).map(([id, chat]) => [id, {
                     ...chat,
@@ -459,10 +465,11 @@ class ChatManager {
                     }))
                 }]),
                 activeChat: this.activeChat,
-                chatCounter: this.chatCounter
+                chatCounter: this.chatCounter,
+                userId: isAuthenticated ? currentUser.id : null
             };
             
-            localStorage.setItem('math_teacher_chats', JSON.stringify(chatsData));
+            localStorage.setItem(storageKey, JSON.stringify(chatsData));
         } catch (error) {
             console.error('Failed to save chats:', error);
         }
@@ -470,9 +477,28 @@ class ChatManager {
 
     loadChats() {
         try {
-            const stored = localStorage.getItem('math_teacher_chats');
+            const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
+            const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+            
+            // Use different storage keys for authenticated vs anonymous users
+            const storageKey = isAuthenticated ? `math_teacher_chats_${currentUser.id}` : 'math_teacher_chats_anonymous';
+            
+            const stored = localStorage.getItem(storageKey);
             if (stored) {
                 const chatsData = JSON.parse(stored);
+                
+                // Verify the data belongs to the current user context
+                if (isAuthenticated && chatsData.userId !== currentUser.id) {
+                    console.log('Chat data belongs to different user, starting fresh');
+                    this.createFirstChat();
+                    return;
+                }
+                
+                if (!isAuthenticated && chatsData.userId !== null) {
+                    console.log('Chat data belongs to authenticated user, starting fresh for anonymous');
+                    this.createFirstChat();
+                    return;
+                }
                 
                 // Restore chats
                 this.chats = new Map(chatsData.chats.map(([id, chat]) => [id, {
@@ -499,26 +525,37 @@ class ChatManager {
                     const firstChat = Array.from(this.chats.keys())[0];
                     this.switchToChat(firstChat);
                 }
-            }
-            
-            // Create first chat if none exist
-            if (this.chats.size === 0) {
-                // Check if math interface already has a session we can use
-                const existingSessionId = loadFromLocalStorage('current_session_id', null);
-                
-                if (existingSessionId) {
-                    // Use the existing session instead of creating a new one
-                    this.createNewChatWithSession(existingSessionId, 'Restored Session');
-                } else {
-                    // Only create new if no existing session at all
-                    this.createNewChat('Welcome');
-                }
+            } else {
+                this.createFirstChat();
             }
             
         } catch (error) {
             console.error('Failed to load chats:', error);
-            this.createNewChat('Welcome');
+            this.createFirstChat();
         }
+    }
+    
+    createFirstChat() {
+        // Create first chat if none exist
+        if (this.chats.size === 0) {
+            const existingSessionId = loadFromLocalStorage('current_session_id', null);
+            
+            if (existingSessionId) {
+                this.createNewChatWithSession(existingSessionId, 'Restored Session');
+            } else {
+                this.createNewChat('Welcome');
+            }
+        }
+    }
+
+    onUserContextChanged() {
+        // Clear current chats from UI
+        document.getElementById('chat-list').innerHTML = '';
+        this.chats.clear();
+        this.activeChat = null;
+        
+        // Load chats for the new user context
+        this.loadChats();
     }
 
 
