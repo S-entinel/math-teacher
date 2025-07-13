@@ -634,7 +634,7 @@ async def get_current_user(authorization: str = Header(None)):
             raise HTTPException(status_code=503, detail="Authentication service not available")
         
         user = require_authenticated_user(authorization)
-        return math_teacher.auth_service.get_user_profile(user.id)
+        return math_teacher.auth_service.get_user_profile(user['id'])
         
     except HTTPException:
         raise
@@ -653,7 +653,7 @@ async def update_user_profile(
             raise HTTPException(status_code=503, detail="Authentication service not available")
         
         user = require_authenticated_user(authorization)
-        return math_teacher.auth_service.update_user_profile(user.id, request)
+        return math_teacher.auth_service.update_user_profile(user['id'], request)
         
     except HTTPException:
         raise
@@ -702,7 +702,7 @@ async def change_password(
             raise HTTPException(status_code=503, detail="Authentication service not available")
         
         user = require_authenticated_user(authorization)
-        success = math_teacher.auth_service.change_password(user.id, request)
+        success = math_teacher.auth_service.change_password(user['id'], request)
         return {"message": "Password changed successfully"}
         
     except HTTPException:
@@ -710,7 +710,7 @@ async def change_password(
     except Exception as e:
         math_logger.log_error(None, e, "change_password")
         raise HTTPException(status_code=500, detail="Password change failed")
-
+        
 @app.post("/auth/anonymous", response_model=AnonymousUserResponse)
 async def create_anonymous_user():
     """Create anonymous user session"""
@@ -899,6 +899,7 @@ async def get_conversation_history(
             # Check if user has access to this session
             if user and math_teacher.db_service:
                 db_session = math_teacher.db_service.get_chat_session(session_id)
+
                 if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'): 
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
@@ -1021,14 +1022,15 @@ async def delete_session(
 @app.post("/sessions/{session_id}/clear")
 async def clear_session(
     session_id: str,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  
 ):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}/clear", "POST"):
             # Check session ownership for authenticated users
-            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  # FIXED: Use .get()
+            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') != user.get('id'):  # FIXED: Use .get()
+                # FIX: Use .get() method for dict access
+                if db_session and db_session.get('user_id') != user.get('id'):  
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             # Clear from memory
@@ -1055,6 +1057,7 @@ async def clear_session(
     except Exception as e:
         math_logger.log_error(session_id, e, "clear_session")
         raise HTTPException(status_code=500, detail=str(e))
+        
 
 @app.get("/health")
 async def health_check():

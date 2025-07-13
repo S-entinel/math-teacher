@@ -30,9 +30,18 @@ class AuthManager {
                     this.setAuthenticationState(user, stored.accessToken, stored.refreshToken);
                     console.log('✓ Authentication restored from storage');
                     return;
+                } else {
+                    // Token invalid, try to refresh
+                    if (stored.refreshToken) {
+                        const refreshed = await this.refreshAccessToken(stored.refreshToken);
+                        if (refreshed) {
+                            console.log('✓ Authentication refreshed successfully');
+                            return;
+                        }
+                    }
                 }
             } catch (error) {
-                console.log('Stored token invalid, clearing...');
+                console.log('Stored token invalid, clearing...', error);
                 this.clearStoredAuth();
             }
         }
@@ -102,6 +111,8 @@ class AuthManager {
         
         // Notify of user context change
         this.notifyUserContextChange();
+        
+        console.log('✓ Authentication state set for user:', user.email || user.id);
     }
 
     clearAuthenticationState() {
@@ -678,12 +689,17 @@ class AuthManager {
             const response = await fetch(url, requestOptions);
             
             // Handle token refresh if access token expired
-            if (response.status === 401 && this.refreshToken) {
+            if (response.status === 401 && this.refreshToken && !endpoint.includes('/auth/refresh')) {
+                console.log('Token expired, attempting refresh...');
                 const refreshed = await this.refreshAccessToken();
                 if (refreshed) {
                     // Retry original request with new token
                     requestOptions.headers['Authorization'] = `Bearer ${this.accessToken}`;
                     return await fetch(url, requestOptions);
+                } else {
+                    // Refresh failed, redirect to login
+                    this.showAuthModal('login');
+                    throw new Error('Authentication required');
                 }
             }
             
@@ -705,15 +721,21 @@ class AuthManager {
             
             if (response.ok) {
                 return await response.json();
+            } else if (response.status === 401) {
+                // Token expired or invalid
+                return null;
+            } else {
+                throw new Error(`HTTP ${response.status}`);
             }
-            return null;
         } catch (error) {
+            console.error('Token validation failed:', error);
             return null;
         }
     }
 
-    async refreshAccessToken() {
-        if (!this.refreshToken) return false;
+    async refreshAccessToken(refreshToken = null) {
+        const tokenToUse = refreshToken || this.refreshToken;
+        if (!tokenToUse) return false;
         
         try {
             const response = await fetch(`${this.apiUrl}/auth/refresh`, {
@@ -722,28 +744,25 @@ class AuthManager {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
-                    refresh_token: this.refreshToken
+                    refresh_token: tokenToUse
                 })
             });
             
             if (response.ok) {
                 const data = await response.json();
-                this.accessToken = data.access_token;
-                this.refreshToken = data.refresh_token;
                 
-                this.saveStoredAuth({
-                    user: this.currentUser,
-                    accessToken: this.accessToken,
-                    refreshToken: this.refreshToken
-                });
-                
-                this.scheduleTokenRefresh();
-                return true;
-            } else {
-                // Refresh failed, sign out user
-                this.signOut();
-                return false;
+                // Get current user info with new token
+                const user = await this.validateToken(data.access_token);
+                if (user) {
+                    this.setAuthenticationState(user, data.access_token, data.refresh_token);
+                    return true;
+                }
             }
+            
+            // Refresh failed, sign out user
+            this.signOut();
+            return false;
+            
         } catch (error) {
             console.error('Token refresh failed:', error);
             this.signOut();
@@ -758,11 +777,12 @@ class AuthManager {
             clearTimeout(this.refreshTimeout);
         }
         
-        // Refresh token 5 minutes before expiry
-        const refreshDelay = (24 * 60 - 5) * 60 * 1000; // 23 hours 55 minutes
+        // Refresh token 5 minutes before expiry (assuming 24hr tokens)
+        const refreshDelay = (23 * 60 + 55) * 60 * 1000; // 23 hours 55 minutes
         
-        this.refreshTimeout = setTimeout(() => {
-            this.refreshAccessToken();
+        this.refreshTimeout = setTimeout(async () => {
+            console.log('Scheduled token refresh...');
+            await this.refreshAccessToken();
         }, refreshDelay);
     }
 
@@ -798,10 +818,14 @@ class AuthManager {
                 const age = Date.now() - (data.timestamp || 0);
                 if (age < 30 * 24 * 60 * 60 * 1000) {
                     return data;
+                } else {
+                    // Clear expired data
+                    this.clearStoredAuth();
                 }
             }
         } catch (error) {
             console.error('Failed to load auth data:', error);
+            this.clearStoredAuth();
         }
         
         return {};
