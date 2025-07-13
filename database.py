@@ -178,7 +178,7 @@ class User(Base):
         return data
 
 class ChatSession(Base):
-    """Chat session model"""
+    """Chat session model with AI context persistence"""
     __tablename__ = 'chat_sessions'
     
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -191,15 +191,19 @@ class ChatSession(Base):
     message_count = Column(Integer, default=0)
     session_metadata = Column(JSON, default=dict)
 
+    # NEW: AI Context Storage
+    ai_context = Column(JSON, default=dict)  # Store Gemini chat history
+    last_ai_message_id = Column(String, nullable=True)  # Track conversation continuity
+    
     is_shared = Column(Boolean, default=False)
     share_token = Column(String(255), nullable=True)
     
-    # Relationships
+    # Relationships (unchanged)
     user = relationship("User", back_populates="chat_sessions")
     messages = relationship("Message", back_populates="chat_session", cascade="all, delete-orphan")
     artifacts = relationship("Artifact", back_populates="chat_session", cascade="all, delete-orphan")
     
-    # Indexes for performance
+    # Indexes for performance (unchanged)
     __table_args__ = (
         Index('idx_session_id', 'session_id'),
         Index('idx_user_last_active', 'user_id', 'last_active'),
@@ -223,7 +227,20 @@ class ChatSession(Base):
         self.share_token = None
         self.is_shared = False
     
-    def to_dict(self, include_sharing=False):
+    def store_ai_context(self, chat_history: list):
+        """Store Gemini chat history for context restoration"""
+        self.ai_context = {
+            'history': chat_history,
+            'last_updated': datetime.utcnow().isoformat()
+        }
+    
+    def get_ai_context(self) -> list:
+        """Retrieve stored AI chat history"""
+        if self.ai_context and 'history' in self.ai_context:
+            return self.ai_context['history']
+        return []
+    
+    def to_dict(self, include_sharing=False, include_ai_context=False):
         """Convert to dictionary"""
         data = {
             'id': self.id,
@@ -243,10 +260,16 @@ class ChatSession(Base):
                 'share_token': self.share_token
             })
         
+        if include_ai_context:
+            data.update({
+                'ai_context': self.ai_context or {},
+                'last_ai_message_id': self.last_ai_message_id
+            })
+        
         return data
 
 class Message(Base):
-    """Message model - keeping existing structure"""
+    """Message model"""
     __tablename__ = 'messages'
     
     id = Column(Integer, primary_key=True, autoincrement=True)

@@ -41,7 +41,6 @@ from logging_system import (
 
 load_dotenv()
 
-# KEEP EXISTING IN-MEMORY STORAGE FOR COMPATIBILITY
 conversations: dict[str, dict] = {}
 
 class MathTeacherAPI:
@@ -79,7 +78,7 @@ class MathTeacherAPI:
             math_logger.logger.warning(f"Authentication initialization failed: {e}")
             self.auth_service = None
         
-        math_logger.logger.info("Math Teacher API with Authentication initialized successfully")
+        math_logger.logger.info("Math Teacher API initialized successfully")
     
     def get_system_prompt(self):
         # Keep existing system prompt unchanged
@@ -196,27 +195,29 @@ class MathTeacherAPI:
 
         return base_prompt
 
-    # ===== ENHANCED SESSION MANAGEMENT WITH AUTH =====
-    
+
     @log_performance("create_session")
     def create_session(self, user: Dict[str, Any] = None) -> tuple[str, str]:
         """Create a new session for user (authenticated or anonymous)"""
         session_id = str(uuid.uuid4())
         
+        # Create fresh AI chat session
+        chat_session = self.model.start_chat(history=[])
+        
         # Create in-memory session (existing functionality)
         conversations[session_id] = {
-            'chat_session': self.model.start_chat(history=[]),
+            'chat_session': chat_session,
             'messages': [],
             'created_at': datetime.now(),
             'last_active': datetime.now(),
-            'user_id': user.get('id') if user else None  # FIXED: Use .get()
+            'user_id': user.get('id') if user else None
         }
         
         # Also create in database if available
         if self.db_service and user:
             try:
                 db_session = self.db_service.create_chat_session(
-                    user_id=user.get('id'),  # FIXED: Use .get()
+                    user_id=user.get('id'),
                     session_id=session_id,
                     title="New Math Session"
                 )
@@ -224,10 +225,10 @@ class MathTeacherAPI:
             except Exception as e:
                 math_logger.logger.warning(f"Failed to create database session: {e}")
         
-        user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
+        user_token = user.get('session_token') if user else str(uuid.uuid4())
         
         math_logger.set_session_context(session_id, {
-            'user_id': user.get('id') if user else None,  # FIXED: Use .get()
+            'user_id': user.get('id') if user else None,
             'user_token': user_token,
             'session_type': 'new'
         })
@@ -274,7 +275,7 @@ class MathTeacherAPI:
 
     @log_performance("ensure_session_exists")
     def ensure_session_exists(self, session_id: str, user: Dict[str, Any] = None) -> tuple[str, str]:
-        """Ensure session exists in both memory and database"""
+        """Ensure session exists with AI context restoration"""
         # Check if session exists in memory
         if session_id and session_id in conversations:
             conversations[session_id]['last_active'] = datetime.now()
@@ -286,25 +287,37 @@ class MathTeacherAPI:
                 except Exception as e:
                     math_logger.logger.warning(f"Failed to ensure database session: {e}")
             
-            user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
+            user_token = user.get('session_token') if user else str(uuid.uuid4())
             return session_id, user_token
         
-        # Check if session exists in database only
+        # Check if session exists in database and restore AI context
         if self.db_service and session_id:
             try:
                 db_session = self.db_service.get_chat_session(session_id)
                 if db_session:
+                    # Restore AI context from database
+                    ai_context = self.db_service.get_ai_context(session_id)
+                    
+                    # Create new AI chat session with restored context
+                    if ai_context:
+                        # Restore AI chat session with previous history
+                        chat_session = self.model.start_chat(history=ai_context)
+                        math_logger.logger.info(f"Restored AI context for session {session_id}: {len(ai_context)} messages")
+                    else:
+                        # Fresh AI chat session
+                        chat_session = self.model.start_chat(history=[])
+                        math_logger.logger.info(f"Created fresh AI context for session {session_id}")
+                    
                     # Restore to memory
                     conversations[session_id] = {
-                        'chat_session': self.model.start_chat(history=[]),
+                        'chat_session': chat_session,
                         'messages': [],
                         'created_at': datetime.fromisoformat(db_session['created_at']),
                         'last_active': datetime.now(),
-                        'user_id': user.get('id') if user else None  # FIXED: Use .get()
+                        'user_id': user.get('id') if user else None
                     }
                     
                     # Load messages from database
-                    from database import ChatMessage as DBChatMessage
                     db_messages = self.db_service.get_session_messages(session_id)
                     for msg in db_messages:
                         conversations[session_id]['messages'].append(
@@ -315,7 +328,7 @@ class MathTeacherAPI:
                             )
                         )
                     
-                    user_token = user.get('session_token') if user else str(uuid.uuid4())  # FIXED: Use .get()
+                    user_token = user.get('session_token') if user else str(uuid.uuid4())
                     log_session_restored(session_id, len(db_messages))
                     return session_id, user_token
                     
@@ -327,7 +340,7 @@ class MathTeacherAPI:
 
     @log_performance("send_message")
     def send_message(self, message: str, session_id: str, user: Dict[str, Any] = None) -> str:
-        """Send message and store in both memory and database"""
+        """Send message with AI context persistence"""
         import time
         start_time = time.time()
         
@@ -342,17 +355,14 @@ class MathTeacherAPI:
         log_message_sent(session_id, len(message))
         
         try:
-            # For newer versions with system_instruction
+            # Send message to AI (existing logic)
             if hasattr(self, 'system_prompt'):
-                # Prepend system prompt for older versions
                 full_message = f"{self.system_prompt}\n\nUser: {message}"
                 response = chat_session.send_message(full_message)
             else:
-                # Newer versions handle system instruction automatically
                 response = chat_session.send_message(message)
                 
             response_text = response.text
-            
             response_time = (time.time() - start_time) * 1000
             
             # Store in memory (existing functionality)
@@ -362,7 +372,7 @@ class MathTeacherAPI:
             ])
             session_data['last_active'] = datetime.now()
             
-            # Also store in database if available
+            # Store in database (existing functionality)
             if self.db_service:
                 try:
                     self.db_service.add_message(
@@ -376,6 +386,10 @@ class MathTeacherAPI:
                         content=response_text,
                         response_time_ms=int(response_time)
                     )
+                    
+                    # NEW: Store AI context after each message
+                    self._store_ai_context(session_id, chat_session)
+                    
                 except Exception as e:
                     math_logger.logger.warning(f"Failed to store messages in database: {e}")
             
@@ -406,6 +420,37 @@ class MathTeacherAPI:
                 return "Hmph, looks like the API is being overloaded right now. Try again in a minute - I don't have infinite processing power, you know."
             
             raise HTTPException(status_code=500, detail=f"Error communicating with AI: {error_msg}")
+        
+
+    def _store_ai_context(self, session_id: str, chat_session):
+        """Store AI chat session context to database"""
+        try:
+            # Extract chat history from Gemini chat session
+            chat_history = self._extract_chat_history(chat_session)
+            
+            if self.db_service and chat_history:
+                self.db_service.store_ai_context(session_id, chat_history)
+                
+        except Exception as e:
+            math_logger.logger.warning(f"Failed to store AI context: {e}")
+    
+    def _extract_chat_history(self, chat_session) -> list:
+        """Extract chat history from Gemini chat session"""
+        try:
+            if hasattr(chat_session, 'history'):
+                return [
+                    {
+                        'role': msg.role if hasattr(msg, 'role') else 'user',
+                        'parts': [{'text': part.text if hasattr(part, 'text') else str(part)} 
+                                 for part in (msg.parts if hasattr(msg, 'parts') else [msg])]
+                    }
+                    for msg in chat_session.history
+                ]
+            else:
+                # Fallback: return empty list, we'll rely on message history
+                return []
+        except Exception:
+            return []
         
 
 # Initialize API
@@ -676,7 +721,7 @@ async def create_anonymous_user():
         user_dict, session_token = math_teacher.auth_service.get_or_create_anonymous_user()
         
         return AnonymousUserResponse(
-            user=user_dict,  # FIXED: user_dict is already a dictionary, don't call .to_dict()
+            user=user_dict,  
             session_token=session_token
         )
         
@@ -759,7 +804,7 @@ async def root():
 @app.post("/sessions/new", response_model=SessionCreateResponse)
 async def create_new_session(
     request: Request,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)
 ):
     try:
         with log_request_context(None, "/sessions/new", "POST"):
@@ -769,7 +814,7 @@ async def create_new_session(
             math_logger.set_session_context(session_id, {
                 'user_agent': user_agent,
                 'session_type': 'new',
-                'user_id': user.get('id') if user else None,  # FIXED: Use .get()
+                'user_id': user.get('id') if user else None,  
                 'user_token': user_token
             })
             
@@ -831,7 +876,7 @@ async def chat_with_teacher(
             log_feature_used(session_id, "chat_message", {
                 'message_length': len(request.message),
                 'response_length': len(response),
-                'user_authenticated': user is not None and user.get('account_type') != 'anonymous'  # FIXED: Use .get()
+                'user_authenticated': user is not None and user.get('account_type') != 'anonymous' 
             })
             
             return ChatResponse(
@@ -847,14 +892,14 @@ async def chat_with_teacher(
 @app.get("/history/{session_id}")
 async def get_conversation_history(
     session_id: str,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  
 ):
     try:
         with log_request_context(session_id, f"/history/{session_id}", "GET"):
             # Check if user has access to this session
             if user and math_teacher.db_service:
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'):  # FIXED: Use .get()
+                if db_session and db_session.get('user_id') and db_session['user_id'] != user.get('id'): 
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             # Try memory first
@@ -936,14 +981,14 @@ async def list_sessions():
 @app.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  # FIXED: Use Dict instead of User
+    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)  
 ):
     try:
         with log_request_context(session_id, f"/sessions/{session_id}", "DELETE"):
             # Check session ownership for authenticated users
-            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service:  # FIXED: Use .get()
+            if user and user.get('account_type') != 'anonymous' and math_teacher.db_service: 
                 db_session = math_teacher.db_service.get_chat_session(session_id)
-                if db_session and db_session.get('user_id') != user.get('id'):  # FIXED: Use .get()
+                if db_session and db_session.get('user_id') != user.get('id'):  
                     raise HTTPException(status_code=403, detail="Access denied to this session")
             
             deleted_from_memory = False

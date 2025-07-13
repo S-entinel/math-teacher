@@ -217,6 +217,90 @@ class DatabaseService:
         except SQLAlchemyError as e:
             math_logger.log_error(session_id, e, "clear_chat_session")
             return False
+        
+
+    # ===== AI CONTEXT MANAGEMENT =====
+
+    def store_ai_context(self, session_id: str, chat_history: list) -> bool:
+        """Store AI chat context for session restoration"""
+        try:
+            with self.get_session() as session:
+                chat_session = session.query(ChatSession).filter(
+                    ChatSession.session_id == session_id
+                ).first()
+                
+                if not chat_session:
+                    return False
+                
+                chat_session.store_ai_context(chat_history)
+                chat_session.last_active = datetime.utcnow()
+                session.commit()
+                
+                return True
+                
+        except SQLAlchemyError as e:
+            math_logger.log_error(session_id, e, "store_ai_context")
+            return False
+    
+    def get_ai_context(self, session_id: str) -> Optional[list]:
+        """Retrieve stored AI chat context"""
+        try:
+            with self.get_session() as session:
+                chat_session = session.query(ChatSession).filter(
+                    ChatSession.session_id == session_id
+                ).first()
+                
+                if not chat_session:
+                    return None
+                
+                return chat_session.get_ai_context()
+                
+        except SQLAlchemyError as e:
+            math_logger.log_error(session_id, e, "get_ai_context")
+            return None
+    
+    def update_last_ai_message(self, session_id: str, message_id: str) -> bool:
+        """Update the last AI message ID for tracking continuity"""
+        try:
+            with self.get_session() as session:
+                chat_session = session.query(ChatSession).filter(
+                    ChatSession.session_id == session_id
+                ).first()
+                
+                if not chat_session:
+                    return False
+                
+                chat_session.last_ai_message_id = message_id
+                chat_session.last_active = datetime.utcnow()
+                session.commit()
+                
+                return True
+                
+        except SQLAlchemyError as e:
+            math_logger.log_error(session_id, e, "update_last_ai_message")
+            return False
+    
+    def clear_ai_context(self, session_id: str) -> bool:
+        """Clear AI context when conversation is cleared"""
+        try:
+            with self.get_session() as session:
+                chat_session = session.query(ChatSession).filter(
+                    ChatSession.session_id == session_id
+                ).first()
+                
+                if not chat_session:
+                    return False
+                
+                chat_session.ai_context = {}
+                chat_session.last_ai_message_id = None
+                chat_session.last_active = datetime.utcnow()
+                session.commit()
+                
+                return True
+                
+        except SQLAlchemyError as e:
+            math_logger.log_error(session_id, e, "clear_ai_context")
+            return False
     
     # ===== MESSAGE OPERATIONS =====
     
