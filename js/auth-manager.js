@@ -870,9 +870,349 @@ class AuthManager {
     }
 
     showProfileModal() {
-        // TODO: Implement profile modal
-        showNotification('Profile management coming soon', 'info');
+        if (!this.currentUser || this.currentUser.account_type === 'anonymous') {
+            showNotification('Please sign in to access your profile', 'info');
+            this.showAuthModal('login');
+            return;
+        }
+        
+        // Create profile modal if it doesn't exist
+        if (!document.getElementById('profile-overlay')) {
+            this.createProfileModal();
+        }
+        
+        // Load current user data
+        this.loadProfileData();
+        
+        // Show modal
+        const overlay = document.getElementById('profile-overlay');
+        overlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
     }
+
+    createProfileModal() {
+        const overlay = document.createElement('div');
+        overlay.id = 'profile-overlay';
+        overlay.className = 'auth-overlay hidden';
+        overlay.innerHTML = `
+            <div class="auth-modal">
+                <div class="auth-header">
+                    <h2 class="auth-title">User Profile</h2>
+                    <button class="auth-close-btn" id="profile-close">Close</button>
+                </div>
+                <div class="auth-content">
+                    <!-- Profile Form -->
+                    <form class="auth-form" id="profile-form">
+                        <div class="auth-form-group">
+                            <label class="auth-label" for="profile-email">Email</label>
+                            <input type="email" id="profile-email" class="auth-input" readonly>
+                            <div class="field-info">Email cannot be changed after registration</div>
+                        </div>
+                        
+                        <div class="auth-form-group">
+                            <label class="auth-label" for="profile-display-name">Display Name</label>
+                            <input type="text" id="profile-display-name" class="auth-input" 
+                                   placeholder="Your display name" maxlength="50">
+                            <div class="field-error hidden" id="profile-name-error"></div>
+                        </div>
+                        
+                        <div class="auth-form-group">
+                            <label class="auth-label" for="profile-username">Username</label>
+                            <input type="text" id="profile-username" class="auth-input" 
+                                   placeholder="Optional username" maxlength="30">
+                            <div class="field-error hidden" id="profile-username-error"></div>
+                        </div>
+                        
+                        <!-- Account Information -->
+                        <div class="profile-info-section">
+                            <h3 class="profile-section-title">Account Information</h3>
+                            <div class="profile-info-grid">
+                                <div class="profile-info-item">
+                                    <span class="profile-info-label">Account Type</span>
+                                    <span class="profile-info-value" id="profile-account-type"></span>
+                                </div>
+                                <div class="profile-info-item">
+                                    <span class="profile-info-label">Member Since</span>
+                                    <span class="profile-info-value" id="profile-created-at"></span>
+                                </div>
+                                <div class="profile-info-item">
+                                    <span class="profile-info-label">Last Active</span>
+                                    <span class="profile-info-value" id="profile-last-active"></span>
+                                </div>
+                                <div class="profile-info-item">
+                                    <span class="profile-info-label">Email Verified</span>
+                                    <span class="profile-info-value" id="profile-verified-status"></span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Messages -->
+                        <div class="auth-error hidden" id="profile-error"></div>
+                        <div class="auth-success hidden" id="profile-success"></div>
+                        
+                        <!-- Actions -->
+                        <div class="auth-form-actions">
+                            <button type="submit" class="auth-button" id="profile-submit">
+                                <span class="auth-loading hidden">
+                                    <span>Updating Profile</span>
+                                    <span class="auth-loading-dots">
+                                        <span class="dot"></span>
+                                        <span class="dot"></span>
+                                        <span class="dot"></span>
+                                    </span>
+                                </span>
+                                <span class="auth-text">Update Profile</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        this.setupProfileModalEvents();
+    }
+
+
+    setupProfileModalEvents() {
+        // Close button
+        document.getElementById('profile-close').addEventListener('click', () => {
+            this.hideProfileModal();
+        });
+        
+        // Close on overlay click
+        document.getElementById('profile-overlay').addEventListener('click', (e) => {
+            if (e.target.id === 'profile-overlay') {
+                this.hideProfileModal();
+            }
+        });
+        
+        // Form submission
+        document.getElementById('profile-form').addEventListener('submit', (e) => {
+            this.handleProfileUpdate(e);
+        });
+        
+        // Input validation
+        document.getElementById('profile-display-name').addEventListener('blur', (e) => {
+            this.validateDisplayName(e.target.value);
+        });
+        
+        document.getElementById('profile-username').addEventListener('blur', (e) => {
+            this.validateUsername(e.target.value);
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && !document.getElementById('profile-overlay').classList.contains('hidden')) {
+                this.hideProfileModal();
+            }
+        });
+    }
+    
+    hideProfileModal() {
+        const overlay = document.getElementById('profile-overlay');
+        if (overlay) {
+            overlay.classList.add('hidden');
+            document.body.style.overflow = '';
+            this.clearProfileMessages();
+        }
+    }
+    
+    async loadProfileData() {
+        try {
+            const response = await this.apiRequest('/auth/me');
+            
+            if (!response.ok) {
+                throw new Error('Failed to load profile data');
+            }
+            
+            const profile = await response.json();
+            
+            // Populate form fields
+            document.getElementById('profile-email').value = profile.email || '';
+            document.getElementById('profile-display-name').value = profile.display_name || '';
+            document.getElementById('profile-username').value = profile.username || '';
+            
+            // Populate info fields
+            document.getElementById('profile-account-type').textContent = 
+                (profile.account_type || 'anonymous').toUpperCase();
+            document.getElementById('profile-created-at').textContent = 
+                this.formatDate(profile.created_at);
+            document.getElementById('profile-last-active').textContent = 
+                this.formatDate(profile.last_active);
+            document.getElementById('profile-verified-status').textContent = 
+                profile.is_verified ? 'VERIFIED' : 'UNVERIFIED';
+            
+        } catch (error) {
+            console.error('Failed to load profile:', error);
+            this.showProfileError('Failed to load profile data');
+        }
+    }
+    
+    async handleProfileUpdate(e) {
+        e.preventDefault();
+        
+        const displayName = document.getElementById('profile-display-name').value.trim();
+        const username = document.getElementById('profile-username').value.trim();
+        
+        // Validate inputs
+        if (!this.validateDisplayName(displayName)) return;
+        if (username && !this.validateUsername(username)) return;
+        
+        this.setProfileFormLoading(true);
+        this.clearProfileMessages();
+        
+        try {
+            const response = await this.apiRequest('/auth/profile', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    display_name: displayName || null,
+                    username: username || null
+                })
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || 'Profile update failed');
+            }
+            
+            const updatedProfile = await response.json();
+            
+            // Update stored user data
+            this.currentUser = {
+                ...this.currentUser,
+                display_name: updatedProfile.display_name,
+                username: updatedProfile.username
+            };
+            
+            // Update UI
+            this.updateUIForAuthenticatedUser();
+            
+            this.showProfileSuccess('Profile updated successfully');
+            
+        } catch (error) {
+            this.showProfileError(error.message);
+        } finally {
+            this.setProfileFormLoading(false);
+        }
+    }
+    
+    // ===== PROFILE VALIDATION =====
+    
+    validateDisplayName(displayName) {
+        const errorField = document.getElementById('profile-name-error');
+        
+        if (!displayName || displayName.length < 2) {
+            this.showProfileFieldError('profile-name-error', 'Display name must be at least 2 characters');
+            return false;
+        }
+        
+        if (displayName.length > 50) {
+            this.showProfileFieldError('profile-name-error', 'Display name must be less than 50 characters');
+            return false;
+        }
+        
+        errorField.classList.add('hidden');
+        return true;
+    }
+    
+    validateUsername(username) {
+        const errorField = document.getElementById('profile-username-error');
+        
+        if (username && username.length > 0) {
+            if (username.length < 3) {
+                this.showProfileFieldError('profile-username-error', 'Username must be at least 3 characters');
+                return false;
+            }
+            
+            if (username.length > 30) {
+                this.showProfileFieldError('profile-username-error', 'Username must be less than 30 characters');
+                return false;
+            }
+            
+            if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+                this.showProfileFieldError('profile-username-error', 'Username can only contain letters, numbers, dashes, and underscores');
+                return false;
+            }
+        }
+        
+        errorField.classList.add('hidden');
+        return true;
+    }
+    
+    // ===== PROFILE UTILITIES =====
+    
+    setProfileFormLoading(loading) {
+        const submitBtn = document.getElementById('profile-submit');
+        const loadingSpan = submitBtn.querySelector('.auth-loading');
+        const textSpan = submitBtn.querySelector('.auth-text');
+        
+        if (loading) {
+            loadingSpan.classList.remove('hidden');
+            textSpan.classList.add('hidden');
+            submitBtn.disabled = true;
+        } else {
+            loadingSpan.classList.add('hidden');
+            textSpan.classList.remove('hidden');
+            submitBtn.disabled = false;
+        }
+    }
+    
+    clearProfileMessages() {
+        const error = document.getElementById('profile-error');
+        const success = document.getElementById('profile-success');
+        
+        if (error) {
+            error.classList.add('hidden');
+            error.textContent = '';
+        }
+        if (success) {
+            success.classList.add('hidden');
+            success.textContent = '';
+        }
+    }
+    
+    showProfileError(message) {
+        const error = document.getElementById('profile-error');
+        if (error) {
+            error.textContent = message;
+            error.classList.remove('hidden');
+        }
+    }
+    
+    showProfileSuccess(message) {
+        const success = document.getElementById('profile-success');
+        if (success) {
+            success.textContent = message;
+            success.classList.remove('hidden');
+        }
+    }
+    
+    showProfileFieldError(fieldId, message) {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            field.textContent = message;
+            field.classList.remove('hidden');
+        }
+    }
+    
+    formatDate(dateString) {
+        if (!dateString) return 'Unknown';
+        
+        try {
+            const date = new Date(dateString);
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (error) {
+            return 'Invalid Date';
+        }
+    }
+    
 
     showSettingsModal() {
         // TODO: Implement settings modal
@@ -1088,3 +1428,4 @@ if (document.readyState === 'loading') {
 } else {
     console.log('✓ Authentication manager initialized');
 }
+
