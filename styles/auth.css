@@ -1089,3 +1089,476 @@
 .profile-file-input {
     display: none;
 }
+
+/* Settings Modal Container */
+.settings-modal {
+    max-width: 800px;
+    width: 95%;
+    max-height: 90vh;
+}
+
+.settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+}
+
+/* Settings Sections */
+.settings-section {
+    border: var(--border-width) solid var(--border);
+    background: var(--bg-secondary);
+}
+
+.settings-section-title {
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bg-tertiary);
+    border-bottom: var(--border-width) solid var(--border);
+    margin: 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.settings-section-title:hover {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+}
+
+.settings-group {
+    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+}
+
+/* Individual Setting Items */
+.setting-item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+}
+
+.setting-label {
+    font-size: var(--font-size-xs);
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.setting-description {
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    line-height: 1.4;
+    margin-top: var(--space-1);
+}
+
+/* Setting Form Controls */
+.setting-select {
+    background: var(--bg-primary);
+    border: var(--border-width) solid var(--border);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    min-width: 160px;
+}
+
+.setting-select:focus {
+    outline: none;
+    border-color: var(--text-primary);
+    box-shadow: 0 0 0 2px var(--border-dark);
+}
+
+.setting-select:hover {
+    background: var(--bg-tertiary);
+}
+
+/* Custom Checkbox Styling */
+.setting-checkbox-group {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    cursor: pointer;
+}
+
+.setting-checkbox {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    border: var(--border-width) solid var(--border);
+    background: var(--bg-primary);
+    cursor: pointer;
+    position: relative;
+}
+
+.setting-checkbox:checked {
+    background: var(--text-primary);
+}
+
+.setting-checkbox:checked::before {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--bg-primary);
+    font-size: 10px;
+    font-weight: 700;
+}
+
+.setting-checkbox:focus {
+    outline: none;
+    box-shadow: 0 0 0 2px var(--border-dark);
+}
+
+.setting-checkbox-label {
+    font-size: var(--font-size-sm);
+    font-weight: 600;
+    color: var(--text-primary);
+    cursor: pointer;
+    user-select: none;
+}
+
+/* Setting Action Buttons */
+.setting-actions {
+    display: flex;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+}
+
+.setting-action-btn {
+    background: var(--bg-tertiary);
+    border: var(--border-width) solid var(--border);
+    color: var(--text-primary);
+    padding: var(--space-2) var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    cursor: pointer;
+    min-width: 120px;
+    text-align: center;
+}
+
+.setting-action-btn:hover {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+}
+
+.setting-action-btn:active {
+    transform: translate(1px, 1px);
+}
+
+.setting-action-btn.danger {
+    border-color: var(--text-primary);
+    border-style: dashed;
+    color: var(--text-primary);
+}
+
+.setting-action-btn.danger:hover {
+    background: var(--text-primary);
+    color: var(--bg-primary);
+}
+
+/* Collapsible Sections */
+.settings-section.collapsed .settings-group {
+    display: none;
+}
+
+.settings-section.collapsed .settings-section-title::before {
+    content: '► ';
+}
+
+.settings-section:not(.collapsed) .settings-section-title::before {
+    content: '▼ ';
+}
+
+/* Range Inputs (if needed) */
+.setting-range {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-tertiary);
+    border: var(--border-width) solid var(--border);
+    outline: none;
+    cursor: pointer;
+}
+
+.setting-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--text-primary);
+    border: var(--border-width) solid var(--border);
+    cursor: pointer;
+}
+
+.setting-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    background: var(--text-primary);
+    border: var(--border-width) solid var(--border);
+    cursor: pointer;
+    border-radius: 0;
+}
+
+/* Setting Value Display */
+.setting-value-display {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    font-weight: 700;
+    color: var(--text-primary);
+    padding: var(--space-1) var(--space-2);
+    background: var(--bg-primary);
+    border: var(--border-width) solid var(--border);
+    min-width: 60px;
+    text-align: center;
+}
+
+/* Two-column Setting Layout */
+.setting-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: start;
+    gap: var(--space-4);
+}
+
+.setting-control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+}
+
+/* Setting Group Variants */
+.setting-group.compact {
+    padding: var(--space-3);
+    gap: var(--space-3);
+}
+
+.setting-group.compact .setting-item {
+    gap: var(--space-1);
+}
+
+/* Keyboard Shortcut Display */
+.setting-keyboard-shortcut {
+    font-family: var(--font-mono);
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    border: var(--border-width) solid var(--border);
+    padding: var(--space-1) var(--space-2);
+    margin-left: auto;
+}
+
+/* Settings Preview */
+.setting-preview {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: var(--border-width) solid var(--border);
+    background: var(--bg-primary);
+    font-size: var(--font-size-xs);
+    color: var(--text-muted);
+}
+
+.setting-preview-title {
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: var(--space-2);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Color Scheme Previews */
+.theme-preview {
+    display: flex;
+    gap: var(--space-2);
+    margin-top: var(--space-2);
+}
+
+.theme-preview-option {
+    width: 40px;
+    height: 20px;
+    border: var(--border-width) solid var(--border);
+    cursor: pointer;
+    position: relative;
+}
+
+.theme-preview-option.dark {
+    background: linear-gradient(90deg, #000000 50%, #ffffff 50%);
+}
+
+.theme-preview-option.light {
+    background: linear-gradient(90deg, #ffffff 50%, #000000 50%);
+}
+
+.theme-preview-option.auto {
+    background: linear-gradient(45deg, #000000 25%, #ffffff 25%, #ffffff 50%, #000000 50%, #000000 75%, #ffffff 75%);
+    background-size: 8px 8px;
+}
+
+.theme-preview-option.selected::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-primary);
+    font-size: 10px;
+    font-weight: 700;
+    text-shadow: 1px 1px 0 var(--bg-primary), -1px -1px 0 var(--bg-primary), 1px -1px 0 var(--bg-primary), -1px 1px 0 var(--bg-primary);
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .settings-modal {
+        width: 98%;
+        margin: var(--space-2);
+        max-height: 95vh;
+    }
+    
+    .settings-group {
+        padding: var(--space-3);
+        gap: var(--space-4);
+    }
+    
+    .setting-actions {
+        flex-direction: column;
+    }
+    
+    .setting-action-btn {
+        width: 100%;
+    }
+    
+    .setting-row {
+        grid-template-columns: 1fr;
+        gap: var(--space-2);
+    }
+    
+    .setting-control {
+        justify-content: space-between;
+    }
+}
+
+@media (max-width: 480px) {
+    .auth-content {
+        padding: var(--space-3);
+    }
+    
+    .settings-section-title {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--font-size-xs);
+    }
+    
+    .setting-select {
+        width: 100%;
+        min-width: unset;
+    }
+}
+
+/* Animation Disable Class */
+.no-animations * {
+    animation: none !important;
+    transition: none !important;
+}
+
+/* Dark/Light Theme Specific Overrides */
+[data-theme="light"] .setting-checkbox {
+    border-color: var(--black);
+}
+
+[data-theme="light"] .setting-checkbox:checked {
+    background: var(--black);
+}
+
+[data-theme="light"] .setting-checkbox:checked::before {
+    color: var(--white);
+}
+
+[data-theme="light"] .setting-select {
+    border-color: var(--black);
+}
+
+[data-theme="light"] .setting-action-btn.danger {
+    border-color: var(--black);
+}
+
+/* Settings Import/Export Progress */
+.settings-progress {
+    margin-top: var(--space-3);
+    padding: var(--space-3);
+    border: var(--border-width) solid var(--border);
+    background: var(--bg-tertiary);
+    display: none;
+}
+
+.settings-progress.visible {
+    display: block;
+}
+
+.settings-progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-primary);
+    border: var(--border-width) solid var(--border);
+    margin-top: var(--space-2);
+}
+
+.settings-progress-fill {
+    height: 100%;
+    background: var(--text-primary);
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* Setting Categories Icons */
+.settings-section-title::after {
+    content: '';
+    width: 12px;
+    height: 12px;
+    margin-left: var(--space-2);
+    display: inline-block;
+    border: var(--border-width) solid currentColor;
+}
+
+.settings-section:nth-child(1) .settings-section-title::after {
+    /* Appearance icon - monitor */
+    border-radius: 2px;
+    border-bottom-width: 3px;
+}
+
+.settings-section:nth-child(2) .settings-section-title::after {
+    /* Math icon - calculator */
+    background: linear-gradient(90deg, transparent 40%, currentColor 40%, currentColor 60%, transparent 60%);
+}
+
+.settings-section:nth-child(3) .settings-section-title::after {
+    /* Chat icon - speech bubble */
+    border-radius: 50% 50% 50% 0;
+}
+
+.settings-section:nth-child(4) .settings-section-title::after {
+    /* Notifications icon - bell */
+    border-radius: 50% 50% 0 0;
+    border-bottom: 2px solid currentColor;
+}
+
+.settings-section:nth-child(5) .settings-section-title::after {
+    /* Privacy icon - lock */
+    border-radius: 2px 2px 0 0;
+    border-bottom-width: 4px;
+}
+
+.settings-section:nth-child(6) .settings-section-title::after {
+    /* Data icon - database */
+    border-radius: 50%;
+    background: linear-gradient(180deg, transparent 30%, currentColor 30%, currentColor 70%, transparent 70%);
+}
