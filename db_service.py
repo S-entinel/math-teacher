@@ -13,9 +13,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import desc, asc, func, and_, or_
 
 from database import (
-    get_database, get_db_session, User, ChatSession, Message, 
-    Artifact, UserPreference, ensure_user_exists
+    get_database, User, ChatSession, ChatMessage, Artifact, ensure_user_exists
 )
+
 from logging_system import math_logger
 
 class DatabaseService:
@@ -204,7 +204,7 @@ class DatabaseService:
                     return False
                 
                 # Delete all messages and artifacts
-                session.query(Message).filter(Message.chat_session_id == chat_session.id).delete()
+                session.query(ChatMessage).filter(ChatMessage.chat_session_id == chat_session.id).delete()
                 session.query(Artifact).filter(Artifact.chat_session_id == chat_session.id).delete()
                 
                 # Update message count and timestamp
@@ -316,7 +316,7 @@ class DatabaseService:
                 if not chat_session:
                     return None
                 
-                message = Message(
+                message = ChatMessage(
                     chat_session_id=chat_session.id,
                     role=role,
                     content=content,
@@ -348,9 +348,9 @@ class DatabaseService:
                 if not chat_session:
                     return []
                 
-                messages = session.query(Message).filter(
-                    Message.chat_session_id == chat_session.id
-                ).order_by(asc(Message.timestamp)).offset(offset).limit(limit).all()
+                messages = session.query(ChatMessage).filter(
+                    ChatMessage.chat_session_id == chat_session.id
+                ).order_by(asc(ChatMessage.timestamp)).offset(offset).limit(limit).all()
                 
                 return [msg.to_dict() for msg in messages]
                 
@@ -363,12 +363,12 @@ class DatabaseService:
         try:
             with self.get_session() as session:
                 # Join messages with chat sessions to filter by user
-                results = session.query(Message, ChatSession).join(
-                    ChatSession, Message.chat_session_id == ChatSession.id
+                results = session.query(ChatMessage, ChatSession).join(
+                    ChatSession, ChatMessage.chat_session_id == ChatSession.id
                 ).filter(
                     ChatSession.user_id == user_id,
-                    Message.content.contains(query)
-                ).order_by(desc(Message.timestamp)).limit(limit).all()
+                    ChatMessage.content.contains(query)
+                ).order_by(desc(ChatMessage.timestamp)).limit(limit).all()
                 
                 return [{
                     **message.to_dict(),
@@ -481,8 +481,8 @@ class DatabaseService:
                 ).count()
                 
                 # Get total messages
-                message_count = session.query(func.count(Message.id)).join(
-                    ChatSession, Message.chat_session_id == ChatSession.id
+                message_count = session.query(func.count(ChatMessage.id)).join(
+                    ChatSession, ChatMessage.chat_session_id == ChatSession.id
                 ).filter(ChatSession.user_id == user_id).scalar()
                 
                 # Get artifacts count
@@ -527,8 +527,8 @@ class DatabaseService:
                 
                 for old_session in old_sessions:
                     # Count related data before deletion
-                    deleted_messages += session.query(Message).filter(
-                        Message.chat_session_id == old_session.id
+                    deleted_messages += session.query(ChatMessage).filter(
+                        ChatMessage.chat_session_id == old_session.id
                     ).count()
                     
                     deleted_artifacts += session.query(Artifact).filter(
@@ -565,7 +565,7 @@ class DatabaseService:
                 # Basic counts
                 stats['total_users'] = session.query(User).count()
                 stats['total_sessions'] = session.query(ChatSession).count()
-                stats['total_messages'] = session.query(Message).count()
+                stats['total_messages'] = session.query(ChatMessage).count()
                 stats['total_artifacts'] = session.query(Artifact).count()
                 
                 # Active sessions (last 24 hours)
@@ -637,7 +637,7 @@ class DatabaseService:
                         
                         # Create messages
                         for msg_data in chat_data.get('messages', []):
-                            message = Message(
+                            message = ChatMessage(
                                 chat_session_id=chat_session.id,
                                 role=msg_data['role'],
                                 content=msg_data['content'],
@@ -682,9 +682,9 @@ class DatabaseService:
                     session_data = chat_session.to_dict()
                     
                     # Get messages
-                    messages = session.query(Message).filter(
-                        Message.chat_session_id == chat_session.id
-                    ).order_by(asc(Message.timestamp)).all()
+                    messages = session.query(ChatMessage).filter(
+                        ChatMessage.chat_session_id == chat_session.id
+                    ).order_by(asc(ChatMessage.timestamp)).all()
                     session_data['messages'] = [msg.to_dict() for msg in messages]
                     
                     # Get artifacts
