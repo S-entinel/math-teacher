@@ -140,7 +140,6 @@ class ChatSession(Base):
     # Relationships
     user = relationship("User", back_populates="chat_sessions")
     messages = relationship("ChatMessage", back_populates="chat_session", cascade="all, delete-orphan")
-    artifacts = relationship("Artifact", back_populates="chat_session", cascade="all, delete-orphan")
     
     # Indexes for performance
     __table_args__ = (
@@ -209,52 +208,6 @@ class ChatMessage(Base):
             'metadata': self.message_metadata or {}
         }
 
-class Artifact(Base):
-    """Artifact model for storing generated content"""
-    __tablename__ = 'artifacts'
-    
-    # Primary key and relationships
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    artifact_id = Column(String(36), unique=True, nullable=False)  # UUID
-    chat_session_id = Column(Integer, ForeignKey('chat_sessions.id'), nullable=False)
-    
-    # Artifact metadata
-    artifact_type = Column(String(50), nullable=False)  # 'graph', 'equation', etc.
-    title = Column(String(500), nullable=False)
-    content = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    status = Column(String(20), default='complete')  # 'pending', 'generating', 'complete', 'error'
-    error_message = Column(Text, nullable=True)
-    artifact_metadata = Column(JSON, default=dict)
-    
-    # Relationships
-    chat_session = relationship("ChatSession", back_populates="artifacts")
-    
-    # Indexes for performance
-    __table_args__ = (
-        Index('idx_artifact_id', 'artifact_id'),
-        Index('idx_session_type', 'chat_session_id', 'artifact_type'),
-        Index('idx_created_at', 'created_at'),
-    )
-    
-    def __repr__(self):
-        return f"<Artifact(id={self.id}, type={self.artifact_type}, title={self.title})>"
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'artifact_id': self.artifact_id,
-            'chat_session_id': self.chat_session_id,
-            'artifact_type': self.artifact_type,
-            'title': self.title,
-            'content': self.content,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'status': self.status,
-            'error_message': self.error_message,
-            'metadata': self.artifact_metadata or {}
-        }
 
 class UserPreference(Base):
     """User preferences model"""
@@ -531,7 +484,7 @@ def delete_chat_session(session: Session, session_id: str) -> bool:
     chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
     
     if chat_session:
-        session.delete(chat_session)  # Cascade will delete messages and artifacts
+        session.delete(chat_session)  # Cascade will delete messages
         session.commit()
         return True
     return False
@@ -562,7 +515,6 @@ def get_database_stats(session: Session) -> dict:
             'active_sessions': session.query(ChatSession).filter(ChatSession.is_archived == False).count(),
             'archived_sessions': session.query(ChatSession).filter(ChatSession.is_archived == True).count(),
             'total_messages': session.query(ChatMessage).count(),
-            'total_artifacts': session.query(Artifact).count()
         }
         
         # Recent activity (last 24 hours)

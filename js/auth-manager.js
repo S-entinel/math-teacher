@@ -162,10 +162,7 @@ class AuthManager {
             `;
         }
         
-        // Clear any artifact data that might be cached
-        if (window.artifactRenderer && window.artifactRenderer.clearAllArtifacts) {
-            window.artifactRenderer.clearAllArtifacts();
-        }
+        // Artifact data clearing removed
         
         // Clear session storage items that might contain sensitive data
         try {
@@ -218,15 +215,7 @@ class AuthManager {
                 console.log('✓ Cleared conversation UI');
             }
             
-            // Clear any cached artifacts
-            if (window.artifactRenderer) {
-                try {
-                    window.artifactRenderer.clearAllArtifacts?.();
-                    console.log('✓ Cleared cached artifacts');
-                } catch (error) {
-                    console.warn('Could not clear artifacts:', error);
-                }
-            }
+            // Cached data clearing removed
         }
     }
 

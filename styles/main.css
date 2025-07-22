@@ -895,52 +895,6 @@ mjx-math {
     border-style: dashed;
 }
 
-/* Artifact containers */
-.artifact-container {
-    margin: var(--space-6) 0;
-    border: var(--border-thick) solid var(--border);
-    background: var(--bg-primary);
-}
-
-.artifact-header {
-    padding: var(--space-4);
-    background: var(--bg-secondary);
-    border-bottom: var(--border-width) solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.artifact-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-base);
-    color: var(--text-primary);
-}
-
-.artifact-content {
-    padding: var(--space-5);
-}
-
-.artifact-btn {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-xs);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-}
-
-.artifact-btn:hover {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
 
 /* Utility classes */
 .hidden {

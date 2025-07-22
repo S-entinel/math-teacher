@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import desc, asc, func, and_, or_
 
 from database import (
-    get_database, User, ChatSession, ChatMessage, Artifact, ensure_user_exists
+    get_database, User, ChatSession, ChatMessage, ensure_user_exists
 )
 
 from logging_system import math_logger
@@ -172,7 +172,7 @@ class DatabaseService:
             return False
     
     def delete_chat_session(self, session_id: str) -> bool:
-        """Delete a chat session and all its messages/artifacts"""
+        """Delete a chat session and all its messages"""
         try:
             with self.get_session() as session:
                 chat_session = session.query(ChatSession).filter(
@@ -203,9 +203,8 @@ class DatabaseService:
                 if not chat_session:
                     return False
                 
-                # Delete all messages and artifacts
+                # Delete all messages
                 session.query(ChatMessage).filter(ChatMessage.chat_session_id == chat_session.id).delete()
-                session.query(Artifact).filter(Artifact.chat_session_id == chat_session.id).delete()
                 
                 # Update message count and timestamp
                 chat_session.message_count = 0
@@ -380,94 +379,6 @@ class DatabaseService:
             math_logger.log_error(None, e, f"search_messages_user_{user_id}")
             return []
     
-    # ===== ARTIFACT OPERATIONS =====
-    
-    def create_artifact(self, session_id: str, artifact_type: str, title: str, 
-                       content: Dict[str, Any], artifact_id: str = None) -> Optional[Dict[str, Any]]:
-        """Create an artifact"""
-        try:
-            with self.get_session() as session:
-                chat_session = session.query(ChatSession).filter(
-                    ChatSession.session_id == session_id
-                ).first()
-                
-                if not chat_session:
-                    return None
-                
-                artifact = Artifact(
-                    artifact_id=artifact_id or str(uuid.uuid4()),
-                    chat_session_id=chat_session.id,
-                    artifact_type=artifact_type,
-                    title=title,
-                    content=content
-                )
-                
-                session.add(artifact)
-                chat_session.last_active = datetime.utcnow()
-                session.commit()
-                
-                return artifact.to_dict()
-                
-        except SQLAlchemyError as e:
-            math_logger.log_error(session_id, e, "create_artifact")
-            return None
-    
-    def get_artifact(self, artifact_id: str) -> Optional[Dict[str, Any]]:
-        """Get artifact by ID"""
-        try:
-            with self.get_session() as session:
-                artifact = session.query(Artifact).filter(
-                    Artifact.artifact_id == artifact_id
-                ).first()
-                
-                return artifact.to_dict() if artifact else None
-                
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, f"get_artifact_{artifact_id}")
-            return None
-    
-    def get_session_artifacts(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get all artifacts for a session"""
-        try:
-            with self.get_session() as session:
-                chat_session = session.query(ChatSession).filter(
-                    ChatSession.session_id == session_id
-                ).first()
-                
-                if not chat_session:
-                    return []
-                
-                artifacts = session.query(Artifact).filter(
-                    Artifact.chat_session_id == chat_session.id
-                ).order_by(desc(Artifact.created_at)).all()
-                
-                return [artifact.to_dict() for artifact in artifacts]
-                
-        except SQLAlchemyError as e:
-            math_logger.log_error(session_id, e, "get_session_artifacts")
-            return []
-    
-    def update_artifact_status(self, artifact_id: str, status: str, error_message: str = None) -> bool:
-        """Update artifact status"""
-        try:
-            with self.get_session() as session:
-                artifact = session.query(Artifact).filter(
-                    Artifact.artifact_id == artifact_id
-                ).first()
-                
-                if not artifact:
-                    return False
-                
-                artifact.status = status
-                artifact.error_message = error_message
-                artifact.updated_at = datetime.utcnow()
-                
-                session.commit()
-                return True
-                
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, f"update_artifact_status_{artifact_id}")
-            return False
     
     # ===== ANALYTICS AND MAINTENANCE =====
     
@@ -485,10 +396,6 @@ class DatabaseService:
                     ChatSession, ChatMessage.chat_session_id == ChatSession.id
                 ).filter(ChatSession.user_id == user_id).scalar()
                 
-                # Get artifacts count
-                artifact_count = session.query(func.count(Artifact.id)).join(
-                    ChatSession, Artifact.chat_session_id == ChatSession.id
-                ).filter(ChatSession.user_id == user_id).scalar()
                 
                 # Get recent activity (last 7 days)
                 week_ago = datetime.utcnow() - timedelta(days=7)
@@ -500,7 +407,6 @@ class DatabaseService:
                 return {
                     'total_sessions': session_count or 0,
                     'total_messages': message_count or 0,
-                    'total_artifacts': artifact_count or 0,
                     'recent_sessions': recent_sessions or 0,
                     'generated_at': datetime.utcnow().isoformat()
                 }
@@ -523,7 +429,6 @@ class DatabaseService:
                 
                 deleted_sessions = len(old_sessions)
                 deleted_messages = 0
-                deleted_artifacts = 0
                 
                 for old_session in old_sessions:
                     # Count related data before deletion
@@ -531,11 +436,8 @@ class DatabaseService:
                         ChatMessage.chat_session_id == old_session.id
                     ).count()
                     
-                    deleted_artifacts += session.query(Artifact).filter(
-                        Artifact.chat_session_id == old_session.id
-                    ).count()
                     
-                    # Delete the session (cascades to messages and artifacts)
+                    # Delete the session (cascades to messages)
                     session.delete(old_session)
                 
                 session.commit()
@@ -543,7 +445,6 @@ class DatabaseService:
                 result = {
                     'deleted_sessions': deleted_sessions,
                     'deleted_messages': deleted_messages,
-                    'deleted_artifacts': deleted_artifacts,
                     'cutoff_date': cutoff_date.isoformat()
                 }
                 
@@ -566,7 +467,6 @@ class DatabaseService:
                 stats['total_users'] = session.query(User).count()
                 stats['total_sessions'] = session.query(ChatSession).count()
                 stats['total_messages'] = session.query(ChatMessage).count()
-                stats['total_artifacts'] = session.query(Artifact).count()
                 
                 # Active sessions (last 24 hours)
                 day_ago = datetime.utcnow() - timedelta(days=1)
@@ -579,15 +479,6 @@ class DatabaseService:
                     ChatSession.is_archived == True
                 ).count()
                 
-                # Artifact type breakdown
-                artifact_types = session.query(
-                    Artifact.artifact_type, 
-                    func.count(Artifact.id)
-                ).group_by(Artifact.artifact_type).all()
-                
-                stats['artifacts_by_type'] = {
-                    artifact_type: count for artifact_type, count in artifact_types
-                }
                 
                 # Average messages per session
                 avg_messages = session.query(func.avg(ChatSession.message_count)).scalar()
@@ -667,7 +558,7 @@ class DatabaseService:
                 if not user:
                     return {'error': 'User not found'}
                 
-                # Get all user sessions with messages and artifacts
+                # Get all user sessions with messages
                 sessions = session.query(ChatSession).filter(
                     ChatSession.user_id == user_id
                 ).order_by(desc(ChatSession.last_active)).all()
@@ -687,11 +578,6 @@ class DatabaseService:
                     ).order_by(asc(ChatMessage.timestamp)).all()
                     session_data['messages'] = [msg.to_dict() for msg in messages]
                     
-                    # Get artifacts
-                    artifacts = session.query(Artifact).filter(
-                        Artifact.chat_session_id == chat_session.id
-                    ).order_by(asc(Artifact.created_at)).all()
-                    session_data['artifacts'] = [artifact.to_dict() for artifact in artifacts]
                     
                     export_data['sessions'].append(session_data)
                 

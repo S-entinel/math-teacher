@@ -28,10 +28,6 @@ from auth_service import (
     require_authenticated_user, extract_bearer_token
 )
 
-from artifact_system import (
-    artifact_generator, ArtifactInstructionGenerator, 
-    Artifact, ArtifactType, ArtifactStatus
-)
 
 from logging_system import (
     math_logger, log_performance, log_request_context, 
@@ -91,7 +87,6 @@ class MathTeacherAPI:
         - Helpful but expect students to engage thoughtfully with the material
         - Use clear, precise mathematical language
         - Provide step-by-step solutions when needed
-        - Can generate graphs and mathematical artifacts when appropriate
         - Occasionally sarcastic or witty, but always educational
         - Patient with genuine questions, less patient with laziness
 
@@ -742,7 +737,6 @@ async def root():
             "🔒 Secure user authentication and profiles",
             "🔒 Session isolation between users", 
             "🔒 Protected in-memory sessions with database persistence", 
-            "Interactive graphs and artifacts",
             "Chat history and session management",
             "Anonymous and registered user support with security"
         ],
@@ -1073,138 +1067,6 @@ async def health_check():
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ===== ARTIFACT ENDPOINTS =====
-
-@app.get("/artifacts/{artifact_id}")
-async def get_artifact(artifact_id: str):
-    try:
-        # Try in-memory first
-        artifact = artifact_generator.get_artifact(artifact_id)
-        if artifact:
-            # Verify session access before returning artifact
-            session_id = artifact.session_id
-            user = get_user_from_request()  # Get user context
-            if not verify_session_access(session_id, user):
-                raise HTTPException(status_code=403, detail="Access denied to this artifact")
-                
-            log_feature_used(artifact.session_id, "artifact_accessed_memory", {
-                "artifact_id": artifact_id,
-                "type": artifact.metadata.type
-            })
-            return artifact.dict()
-        
-        # Try database if available
-        if math_teacher.db_service:
-            try:
-                db_artifact = math_teacher.db_service.get_artifact(artifact_id)
-                if db_artifact:
-                    # Verify session access for database artifacts
-                    session_id = db_artifact.get("chat_session_id")
-                    user = get_user_from_request()
-                    if session_id and not verify_session_access(session_id, user):
-                        raise HTTPException(status_code=403, detail="Access denied to this artifact")
-                        
-                    log_feature_used("unknown", "artifact_accessed_db", {
-                        "artifact_id": artifact_id,
-                        "type": db_artifact.get("artifact_type")
-                    })
-                    return db_artifact
-            except Exception as e:
-                math_logger.logger.warning(f"Database artifact lookup failed: {e}")
-        
-        raise HTTPException(status_code=404, detail="Artifact not found")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        math_logger.log_error(None, e, "get_artifact")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/sessions/{session_id}/artifacts")
-async def get_session_artifacts(
-    session_id: str,
-    user: Optional[Dict[str, Any]] = Depends(get_user_from_request)
-):
-    try:
-        with log_request_context(session_id, f"/sessions/{session_id}/artifacts", "GET"):
-            
-            # Verify access before returning artifacts
-            if not verify_session_access(session_id, user):
-                raise HTTPException(status_code=403, detail="Access denied to this session")
-            
-            # Get in-memory artifacts
-            memory_artifacts = artifact_generator.list_session_artifacts(session_id)
-            
-            result = {
-                "session_id": session_id,
-                "memory_artifacts": memory_artifacts,
-                "database_artifacts": [],
-                "total_count": len(memory_artifacts)
-            }
-            
-            # Get database artifacts if available
-            if math_teacher.db_service:
-                try:
-                    db_artifacts = math_teacher.db_service.get_session_artifacts(session_id)
-                    result["database_artifacts"] = db_artifacts
-                    result["total_count"] += len(db_artifacts)
-                except Exception as e:
-                    math_logger.logger.warning(f"Database artifacts lookup failed: {e}")
-            
-            log_feature_used(session_id, "artifacts_listed", {
-                "artifact_count": result["total_count"]
-            })
-            
-            return result
-            
-    except HTTPException:
-        raise
-    except Exception as e:
-        math_logger.log_error(session_id, e, "get_session_artifacts")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/artifacts/{artifact_id}/status")
-async def update_artifact_status(artifact_id: str, status_data: Dict[str, Any]):
-    try:
-        status = ArtifactStatus(status_data.get("status"))
-        error_message = status_data.get("error_message")
-        
-        # Update in-memory artifact
-        artifact = artifact_generator.get_artifact(artifact_id)
-        if artifact:
-            # 🔒 SECURITY: Verify session access before updating
-            session_id = artifact.session_id
-            user = get_user_from_request()
-            if not verify_session_access(session_id, user):
-                raise HTTPException(status_code=403, detail="Access denied to this artifact")
-                
-            artifact_generator.update_artifact_status(artifact_id, status, error_message)
-        else:
-            session_id = None
-        
-        # Update database artifact if available
-        if math_teacher.db_service:
-            try:
-                math_teacher.db_service.update_artifact_status(artifact_id, status.value, error_message)
-            except Exception as e:
-                math_logger.logger.warning(f"Failed to update artifact status in database: {e}")
-        
-        if not artifact and not (math_teacher.db_service and math_teacher.db_service.get_artifact(artifact_id)):
-            raise HTTPException(status_code=404, detail="Artifact not found")
-        
-        log_feature_used(session_id, "artifact_status_updated", {
-            "artifact_id": artifact_id,
-            "new_status": status,
-            "has_error": bool(error_message)
-        })
-        
-        return {"artifact_id": artifact_id, "status": status}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        math_logger.log_error(None, e, "update_artifact_status")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ===== DATABASE ADMIN ENDPOINTS =====
 
