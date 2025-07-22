@@ -3,8 +3,15 @@
 // ===== LOCAL STORAGE CONVERSATION MANAGEMENT =====
 function saveConversationToStorage() {
     try {
+        // Enhanced user context validation for saves
         const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
         const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        // Strict validation: refuse to save if auth manager isn't ready
+        if (!window.authManager) {
+            console.log('🔒 Auth manager not ready, refusing to save conversations');
+            return false;
+        }
         
         // Use different storage keys for authenticated vs anonymous users
         const storageKey = isAuthenticated ? `math_conversation_${currentUser.id}` : 'math_conversation_anonymous';
@@ -41,8 +48,15 @@ function saveConversationToStorage() {
 
 function loadConversationFromStorage() {
     try {
+        // Enhanced user context validation
         const currentUser = window.authManager ? window.authManager.getCurrentUser() : null;
         const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        // Strict validation: reject if auth manager isn't ready
+        if (!window.authManager) {
+            console.log('🔒 Auth manager not ready, refusing to load conversations');
+            return false;
+        }
         
         // Use different storage keys for authenticated vs anonymous users
         const storageKey = isAuthenticated ? `math_conversation_${currentUser.id}` : 'math_conversation_anonymous';
@@ -53,14 +67,27 @@ function loadConversationFromStorage() {
             return false;
         }
         
-        // Verify the data belongs to the current user context
-        if (isAuthenticated && conversationData.userId !== currentUser.id) {
-            console.log('Conversation data belongs to different user, not loading');
-            return false;
+        // Enhanced data ownership validation
+        if (isAuthenticated) {
+            // For authenticated users: strict user ID matching
+            if (!conversationData.userId || conversationData.userId !== currentUser.id) {
+                console.log(`🔒 Security: Conversation data mismatch - expected user ${currentUser.id}, found ${conversationData.userId || 'null'}`);
+                // Clear potentially leaked data
+                localStorage.removeItem(storageKey);
+                return false;
+            }
+        } else {
+            // For anonymous users: ensure data is actually anonymous
+            if (conversationData.userId !== null && conversationData.userId !== undefined) {
+                console.log(`🔒 Security: Anonymous session cannot load authenticated user data (userId: ${conversationData.userId})`);
+                // Don't clear this data as it might belong to a legitimate user
+                return false;
+            }
         }
         
-        if (!isAuthenticated && conversationData.userId !== null) {
-            console.log('Conversation data belongs to authenticated user, not loading for anonymous');
+        // Additional validation: check for suspicious data patterns
+        if (conversationData.messages.some(msg => !msg.role || !msg.content)) {
+            console.log('🔒 Security: Invalid message structure detected, rejecting conversation data');
             return false;
         }
         

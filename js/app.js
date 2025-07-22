@@ -170,6 +170,9 @@ function scheduleDatabaseSync() {
 }
 
 async function checkInitialServerHealth() {
+    // Wait for auth manager to be ready before initializing conversations
+    await waitForAuthManagerReady();
+    
     try {
         const health = await window.dbUtils.checkServerHealth();
         if (health) {
@@ -201,6 +204,22 @@ async function checkInitialServerHealth() {
             initializeConversationPersistence();
         }, 1000);
     }
+}
+
+// Wait for auth manager to be fully initialized
+async function waitForAuthManagerReady() {
+    return new Promise((resolve) => {
+        const checkAuthReady = () => {
+            if (window.authManager && window.authManager.getCurrentUser !== undefined) {
+                console.log('🔐 Auth manager ready, proceeding with conversation initialization');
+                resolve();
+            } else {
+                setTimeout(checkAuthReady, 100);
+            }
+        };
+        
+        setTimeout(checkAuthReady, 100);
+    });
 }
 
 async function initializeConversationPersistenceWithDatabase() {

@@ -130,9 +130,14 @@ class AuthManager {
         this.clearStoredAuth();
         this.clearTokenRefresh();
         this.updateUIForAnonymousUser();
+        
+        // Always notify of user context change to trigger cleanup
+        this.notifyUserContextChange();
     }
 
     notifyUserContextChange() {
+        console.log('👤 User context changed, clearing all cached data...');
+        
         // Notify chat manager of user context change
         if (window.chatManager) {
             window.chatManager.onUserContextChanged();
@@ -141,6 +146,87 @@ class AuthManager {
         // Clear any stored conversation data that might be cached
         if (window.mathInterface) {
             window.mathInterface.sessionId = null;
+        }
+        
+        // Clear main conversation area immediately to prevent data leakage
+        const conversationArea = document.getElementById('conversation');
+        if (conversationArea) {
+            conversationArea.innerHTML = `
+                <div class="message-group">
+                    <div class="message message-assistant">
+                        <div class="content">
+                            Right, I'm your AI math teacher. Ask me whatever mathematical questions you have - I'll give you clear, direct explanations. Try to keep up.
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Clear any artifact data that might be cached
+        if (window.artifactRenderer && window.artifactRenderer.clearAllArtifacts) {
+            window.artifactRenderer.clearAllArtifacts();
+        }
+        
+        // Clear session storage items that might contain sensitive data
+        try {
+            sessionStorage.removeItem('current_chat_id');
+            sessionStorage.removeItem('temp_conversation_data');
+        } catch (error) {
+            console.warn('Could not clear session storage:', error);
+        }
+        
+        console.log('✓ User context change cleanup completed');
+    }
+
+    clearUserConversationData() {
+        // Get current user before clearing auth state
+        const currentUser = this.getCurrentUser();
+        const isAuthenticated = currentUser && currentUser.account_type !== 'anonymous';
+        
+        if (isAuthenticated) {
+            console.log('🗑️ Clearing user conversation data for privacy...');
+            
+            // Clear user-specific conversation data from localStorage
+            const userStorageKey = `math_conversation_${currentUser.id}`;
+            try {
+                localStorage.removeItem(userStorageKey);
+                console.log(`✓ Removed conversation data: ${userStorageKey}`);
+            } catch (error) {
+                console.error('Failed to clear user conversation data:', error);
+            }
+            
+            // Clear any session-specific data
+            try {
+                localStorage.removeItem('current_session_id');
+                console.log('✓ Cleared current session ID');
+            } catch (error) {
+                console.error('Failed to clear session ID:', error);
+            }
+            
+            // Clear conversation UI immediately
+            const conversationArea = document.getElementById('conversation');
+            if (conversationArea) {
+                conversationArea.innerHTML = `
+                    <div class="message-group">
+                        <div class="message message-assistant">
+                            <div class="content">
+                                Right, I'm your AI math teacher. Ask me whatever mathematical questions you have - I'll give you clear, direct explanations. Try to keep up.
+                            </div>
+                        </div>
+                    </div>
+                `;
+                console.log('✓ Cleared conversation UI');
+            }
+            
+            // Clear any cached artifacts
+            if (window.artifactRenderer) {
+                try {
+                    window.artifactRenderer.clearAllArtifacts?.();
+                    console.log('✓ Cleared cached artifacts');
+                } catch (error) {
+                    console.warn('Could not clear artifacts:', error);
+                }
+            }
         }
     }
 
@@ -1222,6 +1308,9 @@ class AuthManager {
         } catch (error) {
             console.error('Logout API call failed:', error);
         }
+        
+        // Clear user-specific conversation data BEFORE changing auth state
+        this.clearUserConversationData();
         
         this.clearAuthenticationState();
         
