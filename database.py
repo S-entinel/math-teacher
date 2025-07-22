@@ -1,41 +1,63 @@
 #!/usr/bin/env python3
 """
-Database Models and Configuration for AI Math Teacher - SECURE VERSION
-SQLAlchemy models for user management, chat sessions, and message storage
-FIXED: Anonymous user reuse vulnerability that caused session mixing
+Database models for AI Math Teacher
+SQLAlchemy models for persistent storage
 """
 
 import uuid
+import json
 from datetime import datetime, timedelta
-from typing import Generator, Optional, Dict, Any
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, JSON, ForeignKey, Index, text
+from typing import Optional, Dict, Any, List, Generator
+from sqlalchemy import create_engine, Column, String, DateTime, Integer, Text, Boolean, ForeignKey, Index
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import sessionmaker, relationship, Session
+from sqlalchemy.dialects.sqlite import JSON
+from sqlalchemy.types import TypeDecorator, VARCHAR
 import bcrypt
 
-# Import logger
-from logging_system import math_logger
 
 Base = declarative_base()
 
+class UUID(TypeDecorator):
+    """Platform-independent UUID type for SQLite"""
+    impl = VARCHAR
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        return dialect.type_descriptor(VARCHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        elif isinstance(value, uuid.UUID):
+            return str(value)
+        else:
+            return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        else:
+            return str(value)
+
 class User(Base):
-    """User model with secure session handling"""
+    """User model with authentication support"""
     __tablename__ = 'users'
     
-    # Primary key and identification
     id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String(50), unique=True, nullable=True)
-    email = Column(String(255), unique=True, nullable=True)
     
-    # Authentication
-    password_hash = Column(String(255), nullable=True)
-    session_token = Column(String(255), unique=True, nullable=True)  # For anonymous users
-    
-    # Profile information
-    display_name = Column(String(100), nullable=True)
-    is_active = Column(Boolean, default=True)
+    # Authentication fields
+    email = Column(String(255), unique=True, nullable=True)  # Nullable for anonymous users
+    password_hash = Column(String(255), nullable=True)      # Nullable for anonymous users
     is_verified = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    
+    # Display and identification
+    username = Column(String(100), nullable=True)           # Display name
+    display_name = Column(String(100), nullable=True)       # Friendly display name
+    
+    # Session management (keeping existing functionality)
+    session_token = Column(UUID, unique=True, nullable=True, default=lambda: str(uuid.uuid4()))
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -95,107 +117,182 @@ class User(Base):
         """Generate email verification token"""
         token = str(uuid.uuid4())
         self.verification_token = token
-        self.verification_token_expires = datetime.utcnow() + timedelta(days=1)  # 1 day expiry
+        self.verification_token_expires = datetime.utcnow() + timedelta(days=7)  # 7 days expiry
         return token
     
-    def to_dict(self):
-        """Convert user to dictionary for API responses"""
-        return {
+    def is_reset_token_valid(self, token: str) -> bool:
+        """Check if reset token is valid and not expired"""
+        return (self.reset_token == token and 
+                self.reset_token_expires and 
+                self.reset_token_expires > datetime.utcnow())
+    
+    def is_verification_token_valid(self, token: str) -> bool:
+        """Check if verification token is valid and not expired"""
+        return (self.verification_token == token and 
+                self.verification_token_expires and 
+                self.verification_token_expires > datetime.utcnow())
+    
+    def clear_reset_token(self):
+        """Clear password reset token"""
+        self.reset_token = None
+        self.reset_token_expires = None
+    
+    def clear_verification_token(self):
+        """Clear email verification token"""
+        self.verification_token = None
+        self.verification_token_expires = None
+    
+    def promote_to_registered(self, email: str, password: str, display_name: str = None):
+        """Convert anonymous user to registered user"""
+        self.email = email.lower().strip()
+        self.set_password(password)
+        self.display_name = display_name or email.split('@')[0]
+        self.account_type = 'registered'
+        self.is_active = True
+        # Keep existing session_token and preferences
+    
+    def to_dict(self, include_sensitive=False):
+        """Convert to dictionary, optionally including sensitive fields"""
+        data = {
             'id': self.id,
-            'username': self.username,
             'email': self.email,
+            'username': self.username,
             'display_name': self.display_name,
-            'account_type': self.account_type,
-            'is_active': self.is_active,
             'is_verified': self.is_verified,
+            'is_active': self.is_active,
+            'account_type': self.account_type,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_active': self.last_active.isoformat() if self.last_active else None,
             'last_login': self.last_login.isoformat() if self.last_login else None,
-            'preferences': self.preferences or {},
-            'session_token': self.session_token  # For anonymous users
+            'preferences': self.preferences or {}
         }
+        
+        if include_sensitive:
+            data.update({
+                'session_token': self.session_token,
+                'has_password': bool(self.password_hash),
+                'reset_token_expires': self.reset_token_expires.isoformat() if self.reset_token_expires else None,
+                'verification_token_expires': self.verification_token_expires.isoformat() if self.verification_token_expires else None
+            })
+        
+        return data
 
 class ChatSession(Base):
-    """Chat session model"""
+    """Chat session model with AI context persistence"""
     __tablename__ = 'chat_sessions'
     
-    # Primary key and identification
     id = Column(Integer, primary_key=True, autoincrement=True)
-    session_id = Column(String(36), unique=True, nullable=False)  # UUID
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
-    
-    # Session metadata
-    title = Column(String(200), default="New Math Session")
-    message_count = Column(Integer, default=0)
-    is_archived = Column(Boolean, default=False)
-    
-    # AI context storage
-    ai_context = Column(JSON, default=list)  # Store AI conversation history
-    
-    # Timestamps
+    session_id = Column(UUID, unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=True)
+    title = Column(String(500), nullable=False, default="New Math Session")
     created_at = Column(DateTime, default=datetime.utcnow)
     last_active = Column(DateTime, default=datetime.utcnow)
-    archived_at = Column(DateTime, nullable=True)
+    is_archived = Column(Boolean, default=False)
+    message_count = Column(Integer, default=0)
+    session_metadata = Column(JSON, default=dict)
+
+    # NEW: AI Context Storage
+    ai_context = Column(JSON, default=dict)  # Store Gemini chat history
+    last_ai_message_id = Column(String, nullable=True)  # Track conversation continuity
     
-    # Relationships
+    is_shared = Column(Boolean, default=False)
+    share_token = Column(String(255), nullable=True)
+    
+    # Relationships (unchanged)
     user = relationship("User", back_populates="chat_sessions")
-    messages = relationship("ChatMessage", back_populates="chat_session", cascade="all, delete-orphan")
+    messages = relationship("Message", back_populates="chat_session", cascade="all, delete-orphan")
+    artifacts = relationship("Artifact", back_populates="chat_session", cascade="all, delete-orphan")
     
-    # Indexes for performance
+    # Indexes for performance (unchanged)
     __table_args__ = (
         Index('idx_session_id', 'session_id'),
-        Index('idx_user_sessions', 'user_id', 'created_at'),
-        Index('idx_active_sessions', 'user_id', 'is_archived'),
-        Index('idx_last_active', 'last_active'),
+        Index('idx_user_last_active', 'user_id', 'last_active'),
+        Index('idx_archived', 'is_archived'),
+        Index('idx_shared', 'is_shared'),
+        Index('idx_share_token', 'share_token'),
     )
-    
+
     def __repr__(self):
-        return f"<ChatSession(id={self.id}, session_id={self.session_id}, user_id={self.user_id})>"
+        return f"<ChatSession(id={self.id}, session_id={self.session_id}, title={self.title})>"
     
-    def to_dict(self):
-        return {
+    def generate_share_token(self) -> str:
+        """Generate sharing token for public access"""
+        token = str(uuid.uuid4())
+        self.share_token = token
+        self.is_shared = True
+        return token
+    
+    def revoke_sharing(self):
+        """Revoke sharing access"""
+        self.share_token = None
+        self.is_shared = False
+    
+    def store_ai_context(self, chat_history: list):
+        """Store Gemini chat history for context restoration"""
+        self.ai_context = {
+            'history': chat_history,
+            'last_updated': datetime.utcnow().isoformat()
+        }
+    
+    def get_ai_context(self) -> list:
+        """Retrieve stored AI chat history"""
+        if self.ai_context and 'history' in self.ai_context:
+            return self.ai_context['history']
+        return []
+    
+    def to_dict(self, include_sharing=False, include_ai_context=False):
+        """Convert to dictionary"""
+        data = {
             'id': self.id,
             'session_id': self.session_id,
             'user_id': self.user_id,
             'title': self.title,
-            'message_count': self.message_count,
-            'is_archived': self.is_archived,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'last_active': self.last_active.isoformat() if self.last_active else None,
-            'archived_at': self.archived_at.isoformat() if self.archived_at else None
+            'is_archived': self.is_archived,
+            'message_count': self.message_count,
+            'metadata': self.session_metadata or {}
         }
+        
+        if include_sharing:
+            data.update({
+                'is_shared': self.is_shared,
+                'share_token': self.share_token
+            })
+        
+        if include_ai_context:
+            data.update({
+                'ai_context': self.ai_context or {},
+                'last_ai_message_id': self.last_ai_message_id
+            })
+        
+        return data
 
-class ChatMessage(Base):
-    """Individual chat message model"""
-    __tablename__ = 'chat_messages'
+class Message(Base):
+    """Message model"""
+    __tablename__ = 'messages'
     
-    # Primary key and relationships
     id = Column(Integer, primary_key=True, autoincrement=True)
     chat_session_id = Column(Integer, ForeignKey('chat_sessions.id'), nullable=False)
-    
-    # Message content
     role = Column(String(20), nullable=False)  # 'user' or 'assistant'
     content = Column(Text, nullable=False)
-    
-    # Metadata
     timestamp = Column(DateTime, default=datetime.utcnow)
-    message_index = Column(Integer, nullable=False)  # Order within session
-    
-    # Optional metadata
-    message_metadata = Column(JSON, default=dict)  # For storing additional message data
+    tokens_used = Column(Integer, nullable=True)
+    response_time_ms = Column(Integer, nullable=True)
+    message_metadata = Column(JSON, default=dict)
     
     # Relationships
     chat_session = relationship("ChatSession", back_populates="messages")
     
-    # Indexes for performance
+    # Indexes for performance (keeping existing)
     __table_args__ = (
-        Index('idx_session_messages', 'chat_session_id', 'message_index'),
         Index('idx_session_timestamp', 'chat_session_id', 'timestamp'),
         Index('idx_role', 'role'),
     )
     
     def __repr__(self):
-        return f"<ChatMessage(id={self.id}, role={self.role}, session_id={self.chat_session_id})>"
+        content_preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
+        return f"<Message(id={self.id}, role={self.role}, content={content_preview})>"
     
     def to_dict(self):
         return {
@@ -204,10 +301,58 @@ class ChatMessage(Base):
             'role': self.role,
             'content': self.content,
             'timestamp': self.timestamp.isoformat() if self.timestamp else None,
-            'message_index': self.message_index,
+            'tokens_used': self.tokens_used,
+            'response_time_ms': self.response_time_ms,
             'metadata': self.message_metadata or {}
         }
+    
 
+
+class Artifact(Base):
+
+    """Artifact model for graphs and interactive content"""
+    
+    __tablename__ = 'artifacts'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    artifact_id = Column(UUID, unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    chat_session_id = Column(Integer, ForeignKey('chat_sessions.id'), nullable=False)
+    artifact_type = Column(String(50), nullable=False)  # 'graph', etc.
+    title = Column(String(500), nullable=False)
+    content = Column(JSON, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    status = Column(String(20), default='complete')  # 'pending', 'generating', 'complete', 'error'
+    error_message = Column(Text, nullable=True)
+    artifact_metadata = Column(JSON, default=dict)
+    
+    # Relationships
+    chat_session = relationship("ChatSession", back_populates="artifacts")
+    
+    # Indexes for performance (keeping existing)
+    __table_args__ = (
+        Index('idx_artifact_id', 'artifact_id'),
+        Index('idx_session_type', 'chat_session_id', 'artifact_type'),
+        Index('idx_created_at', 'created_at'),
+    )
+    
+    def __repr__(self):
+        return f"<Artifact(id={self.id}, type={self.artifact_type}, title={self.title})>"
+    
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'artifact_id': self.artifact_id,
+            'chat_session_id': self.chat_session_id,
+            'artifact_type': self.artifact_type,
+            'title': self.title,
+            'content': self.content,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'status': self.status,
+            'error_message': self.error_message,
+            'metadata': self.artifact_metadata or {}
+        }
 
 class UserPreference(Base):
     """User preferences model"""
@@ -219,7 +364,7 @@ class UserPreference(Base):
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Indexes for performance
+    # Indexes for performance (keeping existing)
     __table_args__ = (
         Index('idx_user_key', 'user_id', 'key', unique=True),
     )
@@ -276,7 +421,6 @@ class DatabaseConfig:
                         username=None,
                         email=None,
                         account_type='anonymous',
-                        session_token=str(uuid.uuid4()),
                         preferences={
                             'theme': 'dark',
                             'auto_save_interval': 30,
@@ -310,9 +454,9 @@ def get_db_session() -> Generator[Session, None, None]:
     finally:
         session.close()
 
-# 🔒 SECURITY FIXED: Helper functions for SECURE user management
+# Helper functions for common operations
 def ensure_user_exists(session: Session, session_token: str = None, email: str = None) -> User:
-    """🔒 SECURITY FIXED: Ensure a user exists with SECURE UNIQUE ANONYMOUS USER CREATION"""
+    """Ensure a user exists, create anonymous user if needed"""
     
     # First, try to find user by email (for registered users)
     if email:
@@ -322,7 +466,7 @@ def ensure_user_exists(session: Session, session_token: str = None, email: str =
             session.commit()
             return user
     
-    # Then, try to find user by session_token (for anonymous users)
+    # Then, try to find user by session_token
     if session_token:
         user = session.query(User).filter(User.session_token == session_token).first()
         if user:
@@ -330,21 +474,19 @@ def ensure_user_exists(session: Session, session_token: str = None, email: str =
             session.commit()
             return user
     
-    # 🔒 CRITICAL SECURITY FIX: NEVER REUSE ANONYMOUS USERS
-    # The old vulnerable code had this dangerous block that caused session mixing:
-    #
-    # if not session_token and not email:
-    #     existing_user = session.query(User).filter(
-    #         User.email == None, 
-    #         User.account_type == 'anonymous'
-    #     ).first()
-    #     if existing_user:  # ❌ THIS CAUSED THE DATA LEAKAGE!
-    #         return existing_user
-    #
-    # REMOVED: This block was reusing anonymous users across different sessions,
-    # causing conversations to leak between different anonymous users.
+    # If no session_token provided, try to get the first available anonymous user
+    # This prevents creating multiple anonymous users
+    if not session_token and not email:
+        existing_user = session.query(User).filter(
+            User.email == None, 
+            User.account_type == 'anonymous'
+        ).first()
+        if existing_user:
+            existing_user.last_active = datetime.utcnow()
+            session.commit()
+            return existing_user
     
-    # 🔒 SECURE: Always create new unique user for each session
+    # Only create new user if absolutely necessary
     user = User(
         username=None,
         email=email.lower() if email else None,
@@ -357,13 +499,6 @@ def ensure_user_exists(session: Session, session_token: str = None, email: str =
     )
     session.add(user)
     session.commit()
-    
-    # Log user creation for debugging
-    if email:
-        math_logger.logger.info(f"Created new registered user: {email}")
-    else:
-        math_logger.logger.info(f"Created new anonymous user with token: {user.session_token[:8]}...")
-    
     return user
 
 def cleanup_old_sessions(session: Session, days_old: int = 30):
@@ -379,6 +514,7 @@ def cleanup_old_sessions(session: Session, days_old: int = 30):
     
     session.commit()
     return len(old_sessions)
+
 
 def get_user_by_email(session: Session, email: str) -> Optional[User]:
     """Get user by email address"""
@@ -397,135 +533,3 @@ def get_user_by_verification_token(session: Session, token: str) -> Optional[Use
         User.verification_token == token,
         User.verification_token_expires > datetime.utcnow()
     ).first()
-
-def get_user_by_session_token(session: Session, session_token: str) -> Optional[User]:
-    """Get user by session token (for anonymous users)"""
-    return session.query(User).filter(User.session_token == session_token).first()
-
-def create_chat_session(session: Session, user_id: int, session_id: str = None, title: str = "New Math Session") -> ChatSession:
-    """Create a new chat session for a user"""
-    chat_session = ChatSession(
-        session_id=session_id or str(uuid.uuid4()),
-        user_id=user_id,
-        title=title
-    )
-    session.add(chat_session)
-    session.commit()
-    return chat_session
-
-def get_user_sessions(session: Session, user_id: int, limit: int = 50, include_archived: bool = False) -> list:
-    """Get all sessions for a user"""
-    query = session.query(ChatSession).filter(ChatSession.user_id == user_id)
-    
-    if not include_archived:
-        query = query.filter(ChatSession.is_archived == False)
-    
-    sessions = query.order_by(ChatSession.last_active.desc()).limit(limit).all()
-    return [s.to_dict() for s in sessions]
-
-def add_message_to_session(session: Session, session_id: str, role: str, content: str) -> ChatMessage:
-    """Add a message to a chat session"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if not chat_session:
-        raise ValueError(f"Chat session {session_id} not found")
-    
-    # Get next message index
-    message_count = session.query(ChatMessage).filter(ChatMessage.chat_session_id == chat_session.id).count()
-    
-    message = ChatMessage(
-        chat_session_id=chat_session.id,
-        role=role,
-        content=content,
-        message_index=message_count
-    )
-    
-    session.add(message)
-    
-    # Update session message count and last_active
-    chat_session.message_count = message_count + 1
-    chat_session.last_active = datetime.utcnow()
-    
-    session.commit()
-    return message
-
-def get_session_messages(session: Session, session_id: str) -> list:
-    """Get all messages for a session"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if not chat_session:
-        return []
-    
-    messages = session.query(ChatMessage).filter(
-        ChatMessage.chat_session_id == chat_session.id
-    ).order_by(ChatMessage.message_index).all()
-    
-    return [m.to_dict() for m in messages]
-
-def update_session_ai_context(session: Session, session_id: str, ai_context: list):
-    """Update the AI context for a session"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if chat_session:
-        chat_session.ai_context = ai_context
-        chat_session.last_active = datetime.utcnow()
-        session.commit()
-
-def get_session_ai_context(session: Session, session_id: str) -> list:
-    """Get the AI context for a session"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if chat_session:
-        return chat_session.ai_context or []
-    return []
-
-def delete_chat_session(session: Session, session_id: str) -> bool:
-    """Delete a chat session and all its messages"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if chat_session:
-        session.delete(chat_session)  # Cascade will delete messages
-        session.commit()
-        return True
-    return False
-
-def clear_session_messages(session: Session, session_id: str):
-    """Clear all messages from a session but keep the session"""
-    chat_session = session.query(ChatSession).filter(ChatSession.session_id == session_id).first()
-    
-    if chat_session:
-        # Delete all messages
-        session.query(ChatMessage).filter(ChatMessage.chat_session_id == chat_session.id).delete()
-        
-        # Reset session counters and AI context
-        chat_session.message_count = 0
-        chat_session.ai_context = []
-        chat_session.last_active = datetime.utcnow()
-        
-        session.commit()
-
-def get_database_stats(session: Session) -> dict:
-    """Get comprehensive database statistics"""
-    try:
-        stats = {
-            'total_users': session.query(User).count(),
-            'anonymous_users': session.query(User).filter(User.account_type == 'anonymous').count(),
-            'registered_users': session.query(User).filter(User.account_type == 'registered').count(),
-            'total_sessions': session.query(ChatSession).count(),
-            'active_sessions': session.query(ChatSession).filter(ChatSession.is_archived == False).count(),
-            'archived_sessions': session.query(ChatSession).filter(ChatSession.is_archived == True).count(),
-            'total_messages': session.query(ChatMessage).count(),
-        }
-        
-        # Recent activity (last 24 hours)
-        yesterday = datetime.utcnow() - timedelta(days=1)
-        stats['recent_activity'] = {
-            'new_users': session.query(User).filter(User.created_at > yesterday).count(),
-            'new_sessions': session.query(ChatSession).filter(ChatSession.created_at > yesterday).count(),
-            'new_messages': session.query(ChatMessage).filter(ChatMessage.timestamp > yesterday).count()
-        }
-        
-        return stats
-    except Exception as e:
-        math_logger.logger.error(f"Failed to get database stats: {e}")
-        return {}

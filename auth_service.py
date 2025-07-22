@@ -1,63 +1,62 @@
 #!/usr/bin/env python3
 """
-Authentication Service for AI Math Teacher - SECURE VERSION
-Handles user authentication, session management, and JWT tokens
-Anonymous user creation to prevent session mixing
+Authentication Service for AI Math Teacher - FIXED VERSION
+Handles user registration, login, JWT tokens, and session management
 """
 
+import os
 import jwt
 import uuid
+import re
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, Tuple
-from fastapi import HTTPException, Header
-from pydantic import BaseModel, validator
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from pydantic import BaseModel, EmailStr, validator
+from fastapi import HTTPException
+import secrets
 
-from database import get_database, User, ensure_user_exists
+from database import get_database, User, ensure_user_exists, get_user_by_email
 from logging_system import math_logger
 
 # JWT Configuration
-import os
-JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'super-secret-key')
-JWT_ALGORITHM = "HS256"
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRE_MINUTES', '30'))
-JWT_REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv('JWT_REFRESH_TOKEN_EXPIRE_DAYS', '7'))
+JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', secrets.token_urlsafe(32))
+JWT_ALGORITHM = 'HS256'
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = 24 * 60  # 24 hours
+JWT_REFRESH_TOKEN_EXPIRE_DAYS = 30  # 30 days
 
-# Request Models
+# Pydantic Models for Request/Response
 class UserRegisterRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
     display_name: Optional[str] = None
     session_token: Optional[str] = None  # For upgrading anonymous users
     
-    @validator('email')
-    def validate_email(cls, v):
-        v = v.strip().lower()
-        if len(v) < 3 or '@' not in v:
-            raise ValueError('Invalid email format')
-        return v
-    
     @validator('password')
     def validate_password(cls, v):
         if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters')
+            raise ValueError('Password must be at least 6 characters long')
+        if len(v) > 128:
+            raise ValueError('Password must be less than 128 characters')
+        return v
+    
+    @validator('display_name')
+    def validate_display_name(cls, v):
+        if v is not None:
+            v = v.strip()
+            if len(v) < 1:
+                return None
+            if len(v) > 50:
+                raise ValueError('Display name must be less than 50 characters')
         return v
 
 class UserLoginRequest(BaseModel):
-    email: str
+    email: EmailStr
     password: str
-    
-    @validator('email')
-    def validate_email(cls, v):
-        return v.strip().lower()
+    remember_me: bool = False
 
 class PasswordResetRequest(BaseModel):
-    email: str
-    
-    @validator('email')
-    def validate_email(cls, v):
-        return v.strip().lower()
+    email: EmailStr
 
 class PasswordResetConfirm(BaseModel):
     token: str
@@ -66,7 +65,9 @@ class PasswordResetConfirm(BaseModel):
     @validator('new_password')
     def validate_password(cls, v):
         if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters')
+            raise ValueError('Password must be at least 6 characters long')
+        if len(v) > 128:
+            raise ValueError('Password must be less than 128 characters')
         return v
 
 class PasswordChangeRequest(BaseModel):
@@ -76,7 +77,9 @@ class PasswordChangeRequest(BaseModel):
     @validator('new_password')
     def validate_password(cls, v):
         if len(v) < 6:
-            raise ValueError('Password must be at least 6 characters')
+            raise ValueError('Password must be at least 6 characters long')
+        if len(v) > 128:
+            raise ValueError('Password must be less than 128 characters')
         return v
 
 class UserProfileUpdate(BaseModel):
@@ -111,7 +114,7 @@ class UserProfile(BaseModel):
     preferences: Dict[str, Any]
 
 class AuthService:
-    """🔒 SECURE Authentication service for managing users and sessions"""
+    """Authentication service for managing users and sessions"""
     
     def __init__(self):
         self.db = get_database()
@@ -164,6 +167,158 @@ class AuthService:
         except jwt.JWTError:
             raise HTTPException(status_code=401, detail="Invalid token")
     
+    def get_user_from_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Get user from JWT token"""
+        try:
+            payload = self.verify_token(token)
+            user_id = int(payload.get('sub'))
+            
+            with self.get_session() as session:
+                user = session.query(User).filter(User.id == user_id).first()
+                if user and user.is_active:
+                    user.last_active = datetime.utcnow()
+                    user_dict = user.to_dict()
+                    session.commit()
+                    return user_dict
+                return None
+        except (ValueError, HTTPException):
+            return None
+    
+    # ===== USER REGISTRATION =====
+    
+    def register_user(self, register_data: UserRegisterRequest) -> Tuple[User, AuthTokens]:
+        """Register a new user or upgrade anonymous user"""
+        try:
+            with self.get_session() as session:
+                # Check if email already exists
+                existing_user = get_user_by_email(session, register_data.email)
+                if existing_user:
+                    raise HTTPException(
+                        status_code=400, 
+                        detail="Email already registered"
+                    )
+                
+                # If session_token provided, try to upgrade existing anonymous user
+                if register_data.session_token:
+                    anonymous_user = session.query(User).filter(
+                        User.session_token == register_data.session_token,
+                        User.account_type == 'anonymous'
+                    ).first()
+                    
+                    if anonymous_user:
+                        # Upgrade anonymous user to registered
+                        anonymous_user.promote_to_registered(
+                            email=register_data.email,
+                            password=register_data.password,
+                            display_name=register_data.display_name
+                        )
+                        anonymous_user.last_login = datetime.utcnow()
+                        session.commit()
+                        
+                        # Create tokens
+                        access_token = self.create_access_token(
+                            anonymous_user.id, 
+                            anonymous_user.email
+                        )
+                        refresh_token = self.create_refresh_token(anonymous_user.id)
+                        
+                        tokens = AuthTokens(
+                            access_token=access_token,
+                            refresh_token=refresh_token,
+                            expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                        )
+                        
+                        math_logger.logger.info(f"Upgraded anonymous user to registered: {anonymous_user.email}")
+                        return anonymous_user, tokens
+                
+                # Create new registered user
+                new_user = User(
+                    email=register_data.email.lower(),
+                    display_name=register_data.display_name or register_data.email.split('@')[0],
+                    account_type='registered',
+                    is_active=True,
+                    session_token=str(uuid.uuid4()),
+                    preferences={
+                        'theme': 'dark',
+                        'auto_save_interval': 30,
+                        'default_graph_range': 10
+                    }
+                )
+                new_user.set_password(register_data.password)
+                new_user.last_login = datetime.utcnow()
+                
+                session.add(new_user)
+                session.commit()
+                
+                # Create tokens
+                access_token = self.create_access_token(new_user.id, new_user.email)
+                refresh_token = self.create_refresh_token(new_user.id)
+                
+                tokens = AuthTokens(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                )
+                
+                math_logger.logger.info(f"Registered new user: {new_user.email}")
+                return new_user, tokens
+                
+        except HTTPException:
+            raise
+        except SQLAlchemyError as e:
+            math_logger.log_error(None, e, "register_user")
+            raise HTTPException(status_code=500, detail="Registration failed")
+    
+    # ===== USER LOGIN =====
+    
+    def login_user(self, login_data: UserLoginRequest) -> Tuple[User, AuthTokens]:
+        """Authenticate user and return tokens"""
+        try:
+            with self.get_session() as session:
+                user = get_user_by_email(session, login_data.email)
+                
+                if not user or not user.check_password(login_data.password):
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Invalid email or password"
+                    )
+                
+                if not user.is_active:
+                    raise HTTPException(
+                        status_code=401,
+                        detail="Account is deactivated"
+                    )
+                
+                # Update login timestamp
+                user.last_login = datetime.utcnow()
+                user.last_active = datetime.utcnow()
+                session.commit()
+                
+                # Create tokens
+                expire_minutes = JWT_ACCESS_TOKEN_EXPIRE_MINUTES
+                if login_data.remember_me:
+                    expire_minutes = JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 7  # 7 days if remember me
+                
+                access_token = self.create_access_token(user.id, user.email)
+                refresh_token = self.create_refresh_token(user.id)
+                
+                tokens = AuthTokens(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_in=expire_minutes * 60
+                )
+                
+                math_logger.logger.info(f"User logged in: {user.email}")
+                return user, tokens
+                
+        except HTTPException:
+            raise
+        except SQLAlchemyError as e:
+            math_logger.log_error(None, e, "login_user")
+            raise HTTPException(status_code=500, detail="Login failed")
+    
+    # ===== TOKEN REFRESH =====
+    
     def refresh_access_token(self, refresh_token: str) -> AuthTokens:
         """Refresh access token using refresh token"""
         try:
@@ -172,13 +327,17 @@ class AuthService:
             if payload.get('type') != 'refresh':
                 raise HTTPException(status_code=401, detail="Invalid token type")
             
-            user_id = int(payload['sub'])
+            user_id = int(payload.get('sub'))
             
-            # Verify user still exists and is active
             with self.get_session() as session:
-                user = session.query(User).filter(User.id == user_id, User.is_active == True).first()
-                if not user:
+                user = session.query(User).filter(User.id == user_id).first()
+                
+                if not user or not user.is_active:
                     raise HTTPException(status_code=401, detail="User not found or inactive")
+                
+                # Update last active
+                user.last_active = datetime.utcnow()
+                session.commit()
                 
                 # Create new tokens
                 access_token = self.create_access_token(user.id, user.email)
@@ -192,153 +351,38 @@ class AuthService:
                 
         except HTTPException:
             raise
-        except Exception as e:
+        except (ValueError, SQLAlchemyError) as e:
             math_logger.log_error(None, e, "refresh_access_token")
             raise HTTPException(status_code=401, detail="Token refresh failed")
-    
-    # ===== USER REGISTRATION AND LOGIN =====
-    
-    def register_user(self, register_data: UserRegisterRequest) -> Tuple[User, AuthTokens]:
-        """Register a new user or upgrade anonymous user"""
-        try:
-            with self.get_session() as session:
-                # Check if email already exists
-                existing_user = session.query(User).filter(User.email == register_data.email).first()
-                if existing_user:
-                    raise HTTPException(status_code=400, detail="Email already registered")
-                
-                # If session_token provided, try to upgrade anonymous user
-                if register_data.session_token:
-                    user = session.query(User).filter(User.session_token == register_data.session_token).first()
-                    if user and user.account_type == 'anonymous':
-                        # Upgrade anonymous user to registered
-                        user.email = register_data.email
-                        user.account_type = 'registered'
-                        user.display_name = register_data.display_name
-                        user.set_password(register_data.password)
-                        user.last_active = datetime.utcnow()
-                        session.commit()
-                        
-                        # Create tokens
-                        access_token = self.create_access_token(user.id, user.email)
-                        refresh_token = self.create_refresh_token(user.id)
-                        
-                        tokens = AuthTokens(
-                            access_token=access_token,
-                            refresh_token=refresh_token,
-                            expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
-                        )
-                        
-                        math_logger.logger.info(f"Upgraded anonymous user to registered: {user.email}")
-                        return user, tokens
-                
-                # Create new registered user
-                user = User(
-                    email=register_data.email,
-                    display_name=register_data.display_name,
-                    account_type='registered',
-                    session_token=str(uuid.uuid4()),  # Keep session token for compatibility
-                    preferences={
-                        'theme': 'dark',
-                        'auto_save_interval': 30
-                    }
-                )
-                user.set_password(register_data.password)
-                
-                session.add(user)
-                session.commit()
-                
-                # Create tokens
-                access_token = self.create_access_token(user.id, user.email)
-                refresh_token = self.create_refresh_token(user.id)
-                
-                tokens = AuthTokens(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
-                )
-                
-                math_logger.logger.info(f"Registered new user: {user.email}")
-                return user, tokens
-                
-        except HTTPException:
-            raise
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, "register_user")
-            raise HTTPException(status_code=500, detail="Registration failed")
-    
-    def login_user(self, login_data: UserLoginRequest) -> Tuple[User, AuthTokens]:
-        """Authenticate user and return tokens"""
-        try:
-            with self.get_session() as session:
-                user = session.query(User).filter(
-                    User.email == login_data.email,
-                    User.is_active == True
-                ).first()
-                
-                if not user or not user.check_password(login_data.password):
-                    raise HTTPException(status_code=401, detail="Invalid email or password")
-                
-                # Update last login
-                user.last_login = datetime.utcnow()
-                user.last_active = datetime.utcnow()
-                session.commit()
-                
-                # Create tokens
-                access_token = self.create_access_token(user.id, user.email)
-                refresh_token = self.create_refresh_token(user.id)
-                
-                tokens = AuthTokens(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    expires_in=JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60
-                )
-                
-                math_logger.logger.info(f"User logged in: {user.email}")
-                return user, tokens
-                
-        except HTTPException:
-            raise
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, "login_user")
-            raise HTTPException(status_code=500, detail="Login failed")
-    
-    def is_email_available(self, email: str) -> bool:
-        """Check if email is available for registration"""
-        try:
-            with self.get_session() as session:
-                existing_user = session.query(User).filter(User.email == email.lower()).first()
-                return existing_user is None
-        except SQLAlchemyError as e:
-            math_logger.log_error(None, e, "is_email_available")
-            return False
     
     # ===== PASSWORD MANAGEMENT =====
     
     def request_password_reset(self, reset_data: PasswordResetRequest) -> bool:
-        """Request password reset (email would be sent in production)"""
+        """Generate password reset token"""
         try:
             with self.get_session() as session:
-                user = session.query(User).filter(User.email == reset_data.email).first()
+                user = get_user_by_email(session, reset_data.email)
                 
-                if user:
-                    # Generate reset token
-                    reset_token = user.generate_reset_token()
-                    session.commit()
-                    
-                    # In production, send email with reset link
-                    math_logger.logger.info(f"Password reset requested for: {user.email}")
-                    
-                # Always return True to prevent email enumeration
+                if not user:
+                    # Don't reveal if email exists or not
+                    return True
+                
+                # Generate reset token
+                reset_token = user.generate_reset_token()
+                session.commit()
+                
+                # TODO: Send email with reset token
+                # For now, we'll log it (in production, send via email service)
+                math_logger.logger.info(f"Password reset requested for {user.email}, token: {reset_token}")
+                
                 return True
                 
         except SQLAlchemyError as e:
             math_logger.log_error(None, e, "request_password_reset")
-            # Still return True to prevent enumeration
-            return True
+            return False
     
     def reset_password(self, reset_data: PasswordResetConfirm) -> bool:
-        """Reset password using token"""
+        """Reset password using reset token"""
         try:
             with self.get_session() as session:
                 user = session.query(User).filter(
@@ -347,16 +391,18 @@ class AuthService:
                 ).first()
                 
                 if not user:
-                    raise HTTPException(status_code=400, detail="Invalid or expired reset token")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid or expired reset token"
+                    )
                 
                 # Update password and clear reset token
                 user.set_password(reset_data.new_password)
-                user.reset_token = None
-                user.reset_token_expires = None
+                user.clear_reset_token()
                 user.last_active = datetime.utcnow()
                 session.commit()
                 
-                math_logger.logger.info(f"Password reset completed for: {user.email}")
+                math_logger.logger.info(f"Password reset completed for user: {user.email}")
                 return True
                 
         except HTTPException:
@@ -432,18 +478,32 @@ class AuthService:
                 if not user:
                     raise HTTPException(status_code=404, detail="User not found")
                 
-                # Update fields if provided
+                # Update fields
                 if update_data.display_name is not None:
                     user.display_name = update_data.display_name
                 
                 if update_data.preferences is not None:
-                    # Merge preferences
-                    user.preferences = {**(user.preferences or {}), **update_data.preferences}
+                    # Merge with existing preferences
+                    current_prefs = user.preferences or {}
+                    current_prefs.update(update_data.preferences)
+                    user.preferences = current_prefs
                 
                 user.last_active = datetime.utcnow()
                 session.commit()
                 
-                return self.get_user_profile(user_id)
+                math_logger.logger.info(f"Profile updated for user: {user.email}")
+                
+                return UserProfile(
+                    id=user.id,
+                    email=user.email,
+                    display_name=user.display_name,
+                    username=user.username,
+                    account_type=user.account_type,
+                    is_verified=user.is_verified,
+                    created_at=user.created_at,
+                    last_active=user.last_active,
+                    preferences=user.preferences or {}
+                )
                 
         except HTTPException:
             raise
@@ -451,8 +511,10 @@ class AuthService:
             math_logger.log_error(None, e, f"update_user_profile_{user_id}")
             raise HTTPException(status_code=500, detail="Profile update failed")
     
+    # ===== ACCOUNT MANAGEMENT =====
+    
     def deactivate_account(self, user_id: int) -> bool:
-        """Deactivate user account (soft delete)"""
+        """Deactivate user account"""
         try:
             with self.get_session() as session:
                 user = session.query(User).filter(User.id == user_id).first()
@@ -500,37 +562,27 @@ class AuthService:
     # ===== UTILITY METHODS =====
     
     def get_or_create_anonymous_user(self, session_token: str = None) -> Tuple[Dict[str, Any], str]:
-        """🔒 SECURITY FIXED: Get or create anonymous user with SECURE ISOLATION"""
+        """Get or create anonymous user (for backward compatibility) - FINAL FIX"""
         try:
             with self.get_session() as session:
-                
-                # If session_token provided, look for existing user with that token
-                if session_token:
-                    user = session.query(User).filter(User.session_token == session_token).first()
-                    if user:
-                        user.last_active = datetime.utcnow()
-                        session.commit()
-                        return user.to_dict(), user.session_token
-                
-                # 🔒 SECURITY FIXED: Always create new anonymous user if not found
-                # This ensures each anonymous session is completely isolated
-                new_token = session_token or str(uuid.uuid4())
-                user = User(
-                    username=None,
-                    email=None,
-                    session_token=new_token,
-                    account_type='anonymous',
-                    preferences={
-                        'theme': 'dark',
-                        'auto_save_interval': 30
-                    }
-                )
-                session.add(user)
+                user_obj = ensure_user_exists(session, session_token)
+                # FIXED: Ensure we return a dictionary, not an object
+                if hasattr(user_obj, 'to_dict'):
+                    user_dict = user_obj.to_dict()
+                else:
+                    # Already a dict
+                    user_dict = user_obj
+                    
                 session.commit()
                 
-                math_logger.logger.info(f"Created new anonymous user with token: {new_token[:8]}...")
-                return user.to_dict(), user.session_token
+                # Get session token from object or dict
+                if hasattr(user_obj, 'session_token'):
+                    token = user_obj.session_token
+                else:
+                    token = user_dict.get('session_token')
                     
+                return user_dict, token
+                
         except SQLAlchemyError as e:
             math_logger.log_error(None, e, "get_or_create_anonymous_user")
             raise HTTPException(status_code=500, detail="Failed to create user session")
@@ -539,126 +591,73 @@ class AuthService:
             raise HTTPException(status_code=500, detail="Failed to create user session")
     
     def validate_session_token(self, session_token: str) -> Optional[Dict[str, Any]]:
-        """Validate legacy session token and return user"""
+        """Validate legacy session token and return user data"""
         try:
             with self.get_session() as session:
                 user = session.query(User).filter(User.session_token == session_token).first()
-                
-                if user:
+                if user and user.is_active:
                     user.last_active = datetime.utcnow()
+                    user_dict = user.to_dict()
                     session.commit()
-                    return user.to_dict()
-                
+                    return user_dict
                 return None
-                
         except SQLAlchemyError as e:
             math_logger.log_error(None, e, "validate_session_token")
             return None
 
-# Global auth service instance
-auth_service = None
+# Global service instance
+_auth_service = None
 
 def get_auth_service() -> AuthService:
-    """Get the global authentication service"""
-    global auth_service
-    if auth_service is None:
-        auth_service = AuthService()
-    return auth_service
+    """Get the global authentication service instance"""
+    global _auth_service
+    if _auth_service is None:
+        _auth_service = AuthService()
+    return _auth_service
 
-# Helper functions for FastAPI dependencies
+# Utility functions for FastAPI dependencies
 def extract_bearer_token(authorization: str = None) -> Optional[str]:
     """Extract bearer token from Authorization header"""
-    if not authorization:
-        return None
-    
-    if not authorization.startswith("Bearer "):
-        return None
-    
-    return authorization.split(" ")[1]
+    if authorization and authorization.startswith('Bearer '):
+        return authorization[7:]  # Remove 'Bearer ' prefix
+    return None
 
 def get_current_user_from_token(token: str) -> Optional[Dict[str, Any]]:
     """Get current user from JWT token"""
-    try:
-        auth_service = get_auth_service()
-        payload = auth_service.verify_token(token)
-        
-        user_id = int(payload['sub'])
-        
-        with auth_service.get_session() as session:
-            user = session.query(User).filter(User.id == user_id, User.is_active == True).first()
-            if user:
-                user.last_active = datetime.utcnow()
-                session.commit()
-                return user.to_dict()
-        
-        return None
-        
-    except Exception as e:
-        math_logger.log_error(None, e, "get_current_user_from_token")
-        return None
+    auth_service = get_auth_service()
+    return auth_service.get_user_from_token(token)
 
-def get_current_user_optional(
-    authorization: str = Header(None),
-    x_user_token: str = Header(None, alias="X-User-Token")
-) -> Optional[Dict[str, Any]]:
-    """Get current user from either JWT token or legacy session token (optional)"""
+def get_current_user_optional(authorization: str = None, session_token: str = None) -> Optional[Dict[str, Any]]:
+    """Get current user from token or session token (optional)"""
+    auth_service = get_auth_service()
     
     # Try JWT token first
-    jwt_token = extract_bearer_token(authorization)
-    if jwt_token:
-        user = get_current_user_from_token(jwt_token)
-        if user:
-            return user
+    if authorization:
+        jwt_token = extract_bearer_token(authorization)
+        if jwt_token:
+            user = auth_service.get_user_from_token(jwt_token)
+            if user:
+                return user
     
-    # Try legacy session token
-    if x_user_token:
-        try:
-            auth_service = get_auth_service()
-            user = auth_service.validate_session_token(x_user_token)
-            return user
-        except Exception:
-            pass
+    # Fallback to session token for anonymous users
+    if session_token:
+        return auth_service.validate_session_token(session_token)
     
     return None
 
-def require_authenticated_user(authorization: str = Header(None)) -> Dict[str, Any]:
-    """Require authenticated user with JWT token (raises exception if not authenticated)"""
+def require_authenticated_user(authorization: str = None) -> Dict[str, Any]:
+    """Require authenticated user, raise exception if not found"""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authentication required")
     
     jwt_token = extract_bearer_token(authorization)
     if not jwt_token:
-        raise HTTPException(status_code=401, detail="Missing authentication token")
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
     
-    user = get_current_user_from_token(jwt_token)
+    auth_service = get_auth_service()
+    user = auth_service.get_user_from_token(jwt_token)
+    
     if not user:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     
-    # Don't allow anonymous users for authenticated endpoints
-    if user.get('account_type') == 'anonymous':
-        raise HTTPException(status_code=401, detail="Authentication required")
-    
     return user
-
-def get_user_from_request(
-    authorization: str = Header(None),
-    x_user_token: str = Header(None, alias="X-User-Token")
-) -> Optional[Dict[str, Any]]:
-    """Get user from request headers - used as FastAPI dependency"""
-    return get_current_user_optional(authorization, x_user_token)
-
-# Export key components
-__all__ = [
-    'AuthService',
-    'get_auth_service',
-    'UserRegisterRequest',
-    'UserLoginRequest', 
-    'PasswordResetRequest',
-    'PasswordResetConfirm',
-    'PasswordChangeRequest',
-    'UserProfileUpdate',
-    'AuthTokens',
-    'UserProfile',
-    'get_current_user_optional',
-    'require_authenticated_user',
-    'get_user_from_request',
-    'extract_bearer_token'
-]

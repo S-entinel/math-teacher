@@ -170,9 +170,6 @@ function scheduleDatabaseSync() {
 }
 
 async function checkInitialServerHealth() {
-    // Wait for auth manager to be ready before initializing conversations
-    await waitForAuthManagerReady();
-    
     try {
         const health = await window.dbUtils.checkServerHealth();
         if (health) {
@@ -204,22 +201,6 @@ async function checkInitialServerHealth() {
             initializeConversationPersistence();
         }, 1000);
     }
-}
-
-// Wait for auth manager to be fully initialized
-async function waitForAuthManagerReady() {
-    return new Promise((resolve) => {
-        const checkAuthReady = () => {
-            if (window.authManager && window.authManager.getCurrentUser !== undefined) {
-                console.log('🔐 Auth manager ready, proceeding with conversation initialization');
-                resolve();
-            } else {
-                setTimeout(checkAuthReady, 100);
-            }
-        };
-        
-        setTimeout(checkAuthReady, 100);
-    });
 }
 
 async function initializeConversationPersistenceWithDatabase() {
@@ -346,7 +327,7 @@ function initializeEnhancedHeaderButtons() {
                 
                 if (health && stats) {
                     const dbStatus = health.database === 'connected' ? '✅ Connected' : '❌ Disconnected';
-                    const message = `Database: ${dbStatus}\nSessions: ${stats.total_sessions}\nMessages: ${stats.total_messages}`;
+                    const message = `Database: ${dbStatus}\nSessions: ${stats.total_sessions}\nMessages: ${stats.total_messages}\nArtifacts: ${stats.total_artifacts}`;
                     
                     alert(message);
                 } else {
@@ -476,7 +457,15 @@ function handleEscapeKey() {
         return;
     }
     
-    // Fullscreen handling removed
+    // Exit fullscreen artifacts
+    const fullscreenArtifact = document.querySelector('.artifact-container.fullscreen');
+    if (fullscreenArtifact) {
+        const exitBtn = fullscreenArtifact.querySelector('.fullscreen-btn');
+        if (exitBtn) {
+            exitBtn.click();
+            return;
+        }
+    }
     
     // Clear input if it has content
     const input = document.getElementById('message-input');
@@ -534,10 +523,10 @@ function logAvailableFeatures() {
     console.log('  🎯 Smart Scrolling: Respects user scroll position');
     console.log('  💬 Input Hints: Shows keyboard shortcuts when typing');
     console.log('  🎨 Button Feedback: Visual feedback on all interactions');
-    // Dark mode graph feature removed
+    console.log('  🌗 Dark Mode Graphs: Graphs adapt to current theme');
     console.log('  📱 Mobile Optimized: Touch-friendly symbols and templates');
     console.log('  🔧 Session Management: Robust session lifecycle with auto-recovery');
-    // Interactive graph feature removed
+    console.log('  📊 Interactive Graphs: Full-featured mathematical function plotting');
     
     console.log('\n⌨️  Keyboard Shortcuts:');
     console.log('  Ctrl/Cmd + K: Focus input field');
@@ -551,7 +540,7 @@ function logAvailableFeatures() {
     console.log('  Ctrl/Cmd + Shift + R: Manually save conversation');
     console.log('  Ctrl/Cmd + Shift + N: Create new chat');
     console.log('  Ctrl/Cmd + Shift + L: Toggle chat sidebar');
-    console.log('  Escape: Close palettes or clear input');
+    console.log('  Escape: Close palettes, exit fullscreen, or clear input');
     console.log('  Shift + Enter: New line in input (Enter alone sends message)');
     
     console.log('\n💾 Storage Information:');
@@ -585,7 +574,15 @@ function logAvailableFeatures() {
     console.log('  • Session state is synchronized between frontend and backend');
     console.log('  • Auto-recovery from session desync issues');
     
-    // Graph features section removed
+    console.log('\n📊 Graph Features:');
+    console.log('  • Interactive function plotting with Plotly.js');
+    console.log('  • Real-time function editing and updates');
+    console.log('  • Fullscreen mode with Escape key support');
+    console.log('  • Perfect fit within artifacts - no overlapping');
+    console.log('  • Responsive design for all screen sizes');
+    console.log('  • Terminal-style UI with monochrome theme');
+    console.log('  • Support for mathematical functions: sin, cos, tan, log, etc.');
+    console.log('  • Clean error handling with helpful messages');
     
     console.log('\n💡 Tips:');
     console.log('  • Conversations automatically save every 30 seconds');
@@ -595,14 +592,15 @@ function logAvailableFeatures() {
     console.log('  • Use templates to discover what the AI can help with');
     console.log('  • Symbol palette organizes math symbols by category');
     console.log('  • Dark theme preference is remembered between sessions');
-    // Graph theme adaptation removed
+    console.log('  • Graphs automatically adapt to your current theme');
     console.log('  • Input hints appear when you focus the text field');
     console.log('  • Smart scrolling won\'t interrupt you when reading old messages');
     console.log('  • Session timer shows how long you\'ve been working');
     console.log('  • All buttons give visual feedback when clicked');
     console.log('  • Mobile users get larger touch targets for easier use');
     console.log('  • Sessions are bulletproof across browser differences');
-    // Graph display features removed
+    console.log('  • Graph artifacts fit perfectly without formatting issues');
+    console.log('  • Use fullscreen mode for detailed graph analysis');
     
     console.log('\n🔧 Developer Info:');
     console.log('  • Global access: window.mathInterface, window.conversationScrollManager');
@@ -616,5 +614,6 @@ function logAvailableFeatures() {
     console.log('  • Performance: Smart scrolling and optimized rendering');
     console.log('  • Session lifecycle: Robust management with auto-recovery');
     console.log('  • Cross-browser compatibility: Works consistently in Chrome, Safari, Firefox');
-    // Graph rendering and artifact system removed
+    console.log('  • Graph rendering: Plotly.js with custom terminal styling');
+    console.log('  • Artifact system: Clean, modular component architecture');
 }

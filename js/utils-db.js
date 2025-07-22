@@ -205,7 +205,7 @@ async function showDatabaseInfo() {
         console.log('📊 Database Statistics:');
         console.log(`  Total Sessions: ${stats.total_sessions}`);
         console.log(`  Total Messages: ${stats.total_messages}`);
-        // Artifact stats removed
+        console.log(`  Total Artifacts: ${stats.total_artifacts}`);
         console.log(`  Active (24h): ${stats.active_sessions_24h}`);
         console.log(`  Avg Messages/Session: ${stats.avg_messages_per_session}`);
         

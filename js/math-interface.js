@@ -11,7 +11,7 @@ class MathInterface {
         this.sendButton = document.getElementById('send-button');
         this.sessionDisplay = document.getElementById('session-display');
         
-        // Artifact renderer removed
+        this.artifactRenderer = window.artifactRenderer;
         
         this.initializeEventListeners();
         this.initializeSession();
@@ -207,7 +207,7 @@ class MathInterface {
         hideLoadingState();
         
         const responseGroup = this.createResponseGroup();
-        await this.streamResponse(responseGroup.querySelector('.content'), data.response);
+        await this.streamResponseWithArtifacts(responseGroup.querySelector('.content'), data.response);
         
         // Add response to chat manager
         if (this.chatManager) {
@@ -353,7 +353,41 @@ class MathInterface {
         return groupElement;
     }
     
-    // Removed streamResponseWithArtifacts - artifacts no longer supported
+    async streamResponseWithArtifacts(element, text, isError = false) {
+        if (isError) element.classList.add('error');
+        
+        const processedText = await this.artifactRenderer.processArtifacts(element, text, this.sessionId);
+        
+        element.innerHTML = '';
+        const cursor = document.createElement('span');
+        cursor.className = 'streaming-cursor';
+        cursor.textContent = '_';
+        element.appendChild(cursor);
+        
+        let currentContent = '';
+        
+        for (let i = 0; i < processedText.length; i++) {
+            const char = processedText[i];
+            currentContent += char;
+            
+            element.innerHTML = currentContent + '<span class="streaming-cursor">_</span>';
+            
+            renderMathLive(element);
+            
+            if (window.conversationScrollManager) {
+                window.conversationScrollManager.scrollToBottom();
+            } else {
+                scrollToBottom(this.conversationArea);
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, getTypingDelay(char)));
+        }
+        
+        element.innerHTML = currentContent;
+        this.artifactRenderer.applyArtifacts(element);
+        renderMath(element);
+        scheduleAutoSave();
+    }
     
     async streamResponse(element, text, isError = false) {
         if (isError) element.classList.add('error');
