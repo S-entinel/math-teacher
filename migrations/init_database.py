@@ -13,7 +13,7 @@ from pathlib import Path
 # Add parent directory to path to import our modules
 sys.path.append(str(Path(__file__).parent.parent))
 
-from database import get_database, User, ChatSession, Message, Artifact
+from database import get_database, User, ChatSession, Message
 from db_service import get_db_service, DatabaseService
 from logging_system import math_logger
 
@@ -36,13 +36,11 @@ def init_database():
             user_count = session.query(User).count()
             session_count = session.query(ChatSession).count()
             message_count = session.query(Message).count()
-            artifact_count = session.query(Artifact).count()
             
             print(f"📊 Database Status:")
             print(f"   Users: {user_count}")
             print(f"   Sessions: {session_count}")
             print(f"   Messages: {message_count}")
-            print(f"   Artifacts: {artifact_count}")
         
         return True
         
@@ -78,17 +76,17 @@ def migrate_from_localstorage_sample(sample_data: dict = None):
                 }],
                 ['chat_1703123456790_2', {
                     'id': 'chat_1703123456790_2',
-                    'title': 'Calculus Derivatives',
+                    'title': 'Quadratic functions',
                     'sessionId': '550e8400-e29b-41d4-a716-446655440002',
                     'messages': [
                         {
-                            'role': 'user',
-                            'content': 'Graph the function f(x) = x²',
+                            'role': 'user', 
+                            'content': 'Tell me about the function f(x) = x²',
                             'timestamp': '2024-01-16T14:20:00.000Z'
                         },
                         {
                             'role': 'assistant',
-                            'content': 'Obviously, that\'s a parabola. Here\'s the graph:\n\n<artifact>\n{\n  "type": "graph",\n  "title": "f(x) = x²",\n  "content": {\n    "function": "x^2",\n    "x_min": -5,\n    "x_max": 5\n  }\n}\n</artifact>',
+                            'content': 'Obviously, that\'s a parabola opening upward with vertex at the origin.',
                             'timestamp': '2024-01-16T14:20:30.000Z'
                         }
                     ],
@@ -155,17 +153,16 @@ def create_test_data():
                 ]
             },
             {
-                'title': 'Graph Analysis',
+                'title': 'Trigonometry Analysis', 
                 'messages': [
-                    ('user', 'Graph f(x) = sin(x)'),
-                    ('assistant', 'Obviously, that\'s a sine wave. Here you go:\n\n<artifact>\n{\n  "type": "graph",\n  "title": "Sine Function",\n  "content": {\n    "function": "sin(x)",\n    "x_min": -6.28,\n    "x_max": 6.28\n  }\n}\n</artifact>')
+                    ('user', 'Analyze the function f(x) = sin(x)'),
+                    ('assistant', 'Obviously, that\'s a sine wave. It oscillates between -1 and 1 with period 2π, with zeros at multiples of π.')
                 ]
             }
         ]
         
         sessions_created = 0
         messages_created = 0
-        artifacts_created = 0
         
         for session_data in test_sessions:
             # Create session
@@ -187,33 +184,10 @@ def create_test_data():
                     if message:
                         messages_created += 1
                 
-                # If there's an artifact in the content, create it
-                for role, content in session_data['messages']:
-                    if '<artifact>' in content and role == 'assistant':
-                        # Extract artifact JSON (simplified)
-                        try:
-                            start = content.find('<artifact>') + 10
-                            end = content.find('</artifact>')
-                            artifact_json = content[start:end].strip()
-                            artifact_data = json.loads(artifact_json)
-                            
-                            artifact = db_service.create_artifact(
-                                session_id=session['session_id'],
-                                artifact_type=artifact_data['type'],
-                                title=artifact_data['title'],
-                                content=artifact_data['content']
-                            )
-                            
-                            if artifact:
-                                artifacts_created += 1
-                                
-                        except json.JSONDecodeError:
-                            pass  # Skip invalid artifacts
         
         print(f"✓ Test data created:")
         print(f"   Sessions: {sessions_created}")
         print(f"   Messages: {messages_created}")
-        print(f"   Artifacts: {artifacts_created}")
         
         return True
         
@@ -237,15 +211,10 @@ def show_database_stats():
         print(f"   Total Users: {stats['total_users']}")
         print(f"   Total Sessions: {stats['total_sessions']}")
         print(f"   Total Messages: {stats['total_messages']}")
-        print(f"   Total Artifacts: {stats['total_artifacts']}")
         print(f"   Active (24h): {stats['active_sessions_24h']}")
         print(f"   Archived: {stats['archived_sessions']}")
         print(f"   Avg Messages/Session: {stats['avg_messages_per_session']}")
         
-        if stats.get('artifacts_by_type'):
-            print("   Artifacts by Type:")
-            for artifact_type, count in stats['artifacts_by_type'].items():
-                print(f"     {artifact_type}: {count}")
         
     except Exception as e:
         print(f"❌ Failed to get stats: {e}")
@@ -265,7 +234,6 @@ def cleanup_database(days_old: int = 90):
         print(f"✓ Cleanup completed:")
         print(f"   Sessions deleted: {result['deleted_sessions']}")
         print(f"   Messages deleted: {result['deleted_messages']}")
-        print(f"   Artifacts deleted: {result['deleted_artifacts']}")
         
         return True
         

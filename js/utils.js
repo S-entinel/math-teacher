@@ -629,7 +629,6 @@ function showHelp() {
     const helpMessages = [
         "Explain quadratic equations step by step",
         "Help me solve x² + 5x + 6 = 0",
-        "Graph f(x) = x² - 4x + 3 from -5 to 5",
         "Give me practice problems for derivatives",
         "What's the difference between mean and median?",
         "How do I find the limit of sin(x)/x as x approaches 0?",

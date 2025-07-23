@@ -1,223 +1,58 @@
-/* Artifact Components - Improved Layout and Sizing */
+/* General Component Styles */
 
-.artifact-container {
-    margin: var(--space-6) 0;
-    border: var(--border-thick) solid var(--border);
-    background: var(--bg-primary);
-    position: relative;
-    font-family: var(--font-mono);
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.artifact-container.graph-artifact {
-    border-left: 4px solid var(--text-primary);
-}
-
-.artifact-header {
-    padding: var(--space-4);
-    background: var(--bg-secondary);
-    border-bottom: var(--border-width) solid var(--border);
+/* Utility classes for common layouts */
+.flex {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    position: relative;
-    min-height: 48px;
-    box-sizing: border-box;
 }
 
-.artifact-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-base);
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-    margin-right: var(--space-3);
-}
-
-.artifact-actions {
-    display: flex;
-    gap: var(--space-2);
-    flex-shrink: 0;
-}
-
-.artifact-btn {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-xs);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-    min-width: 50px;
-    transition: none;
-}
-
-.artifact-btn:hover {
-    background: var(--text-primary);
-    color: var(--bg-primary);
-}
-
-.artifact-btn:active {
-    transform: translate(1px, 1px);
-}
-
-/* Artifact Content Layout */
-.artifact-content {
-    padding: var(--space-5);
-    box-sizing: border-box;
-}
-
-/* Graph Container - Perfect Fit */
-.graph-container {
-    width: 100%;
-    box-sizing: border-box;
-    margin-bottom: var(--space-4);
-}
-
-.graph-display {
-    width: 100% !important;
-    height: 350px !important;
-    min-height: 350px !important;
-    border: var(--border-width) solid var(--border);
-    background: var(--bg-primary);
-    position: relative;
-    box-sizing: border-box;
-    overflow: hidden;
-}
-
-/* Ensure Plotly plot fills the container properly */
-.graph-display .js-plotly-plot {
-    width: 100% !important;
-    height: 100% !important;
-}
-
-/* Make sure the main plot container maintains dimensions */
-.graph-display .main-svg {
-    width: 100% !important;
-    height: 100% !important;
-}
-
-.graph-loading,
-.graph-error {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-sm);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    z-index: 2;
-}
-
-.graph-error {
-    max-width: 80%;
-}
-
-.error-title {
-    font-size: var(--font-size-base);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin-bottom: var(--space-2);
-}
-
-.error-message {
-    font-size: var(--font-size-sm);
-    margin-bottom: var(--space-2);
-    opacity: 0.8;
-}
-
-.error-hint {
-    font-size: var(--font-size-xs);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    opacity: 0.6;
-}
-
-/* Graph Controls - Clean Layout */
-.graph-controls {
-    background: var(--bg-secondary);
-    border: var(--border-width) solid var(--border);
-    padding: var(--space-4);
-    display: grid;
-    grid-template-columns: 1fr 1fr auto;
-    gap: var(--space-4);
-    align-items: end;
-    box-sizing: border-box;
-}
-
-.control-group {
+.flex-column {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
 }
 
-.control-label {
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    margin: 0;
-}
-
-.terminal-input {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-sm);
-    font-family: var(--font-mono);
-    font-weight: 400;
-    width: 100%;
-    box-sizing: border-box;
-}
-
-.terminal-input:focus {
-    outline: var(--border-width) solid var(--text-primary);
-    outline-offset: calc(var(--border-width) * -1);
-    background: var(--bg-secondary);
-}
-
-.terminal-input::placeholder {
-    color: var(--text-muted);
-    text-transform: uppercase;
-}
-
-/* Range Input Layout */
-.range-inputs {
+.flex-center {
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    justify-content: center;
 }
 
-.range-inputs .terminal-input {
-    flex: 1;
-    min-width: 60px;
+.gap-1 { gap: var(--space-1); }
+.gap-2 { gap: var(--space-2); }
+.gap-3 { gap: var(--space-3); }
+.gap-4 { gap: var(--space-4); }
+
+/* Spacing utilities */
+.m-0 { margin: 0; }
+.p-0 { padding: 0; }
+
+/* Text utilities */
+.text-center { text-align: center; }
+.text-left { text-align: left; }
+.text-right { text-align: right; }
+
+.font-mono {
+    font-family: var(--font-mono);
 }
 
-.range-separator {
-    font-size: var(--font-size-xs);
-    font-weight: 700;
-    color: var(--text-primary);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    white-space: nowrap;
-}
+/* Display utilities */
+.block { display: block; }
+.inline { display: inline; }
+.inline-block { display: inline-block; }
+.hidden { display: none; }
+
+/* Border utilities */
+.border { border: var(--border-width) solid var(--border); }
+.border-thick { border: var(--border-thick) solid var(--border); }
+
+/* Background utilities */
+.bg-primary { background: var(--bg-primary); }
+.bg-secondary { background: var(--bg-secondary); }
+.bg-tertiary { background: var(--bg-tertiary); }
+
+/* Text color utilities */
+.text-primary { color: var(--text-primary); }
+.text-secondary { color: var(--text-secondary); }
+.text-muted { color: var(--text-muted); }
 
 /* Terminal Buttons */
 .terminal-btn {
@@ -258,263 +93,76 @@
     color: var(--text-primary);
 }
 
-/* Fullscreen Mode - Perfect Sizing */
-.artifact-container.fullscreen {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1000;
-    margin: 0;
-    border: none;
-    display: flex;
-    flex-direction: column;
+/* Terminal Input Styling */
+.terminal-input {
     background: var(--bg-primary);
+    border: var(--border-width) solid var(--border);
+    color: var(--text-primary);
+    padding: var(--space-3);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-sm);
+    outline: none;
+    box-sizing: border-box;
 }
 
-.artifact-container.fullscreen .artifact-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    padding: var(--space-5);
+.terminal-input:focus {
+    border-color: var(--text-primary);
+    outline: var(--border-thick) solid var(--text-primary);
+    outline-offset: calc(var(--border-thick) * -1);
 }
 
-.artifact-container.fullscreen .graph-container {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    margin-bottom: var(--space-4);
+.terminal-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.7;
 }
 
-.artifact-container.fullscreen .graph-display {
-    flex: 1;
-    height: auto !important;
-    min-height: 400px !important;
+/* Focus States - Accessibility */
+.terminal-btn:focus {
+    outline: var(--border-thick) solid var(--text-primary);
+    outline-offset: 2px;
 }
 
-
-.artifact-container.fullscreen .graph-controls {
-    flex-shrink: 0;
-}
-
-/* Plotly Integration - Clean Styling */
-.artifact-container .js-plotly-plot {
-    width: 100% !important;
-    height: 100% !important;
-    background: transparent !important;
-}
-
-.artifact-container .plotly .modebar {
-    background: var(--bg-secondary) !important;
-    border: var(--border-width) solid var(--border) !important;
-    border-radius: 0 !important;
-    top: 5px !important;
-    right: 5px !important;
-}
-
-.artifact-container .plotly .modebar-btn {
-    background: var(--bg-primary) !important;
-    border: var(--border-width) solid var(--border) !important;
-    border-radius: 0 !important;
-    color: var(--text-primary) !important;
-    font-family: var(--font-mono) !important;
-    font-size: var(--font-size-xs) !important;
-    margin: 1px !important;
-    width: 20px !important;
-    height: 20px !important;
-}
-
-.artifact-container .plotly .modebar-btn:hover {
-    background: var(--text-primary) !important;
-    color: var(--bg-primary) !important;
-}
-
-.artifact-container .plotly .modebar-btn.active {
-    background: var(--text-primary) !important;
-    color: var(--bg-primary) !important;
-}
-
-/* Loading Animation */
-.graph-loading .thinking-dots {
-    display: inline-flex;
-    gap: var(--space-1);
-    margin-left: var(--space-2);
-}
-
-.graph-loading .thinking-dots .dot {
-    width: 3px;
-    height: 3px;
-    background: var(--text-primary);
-    animation: blink 1s step-end infinite;
-}
-
-.graph-loading .thinking-dots .dot:nth-child(1) { animation-delay: 0s; }
-.graph-loading .thinking-dots .dot:nth-child(2) { animation-delay: 0.3s; }
-.graph-loading .thinking-dots .dot:nth-child(3) { animation-delay: 0.6s; }
-
-/* Mobile Responsive - Improved Layout */
+/* Mobile Responsive - Terminal Controls */
 @media (max-width: 768px) {
-    .artifact-container {
-        margin: var(--space-4) 0;
-    }
-    
-    .artifact-content {
-        padding: var(--space-4);
-    }
-    
-    .graph-controls {
-        grid-template-columns: 1fr;
-        gap: var(--space-3);
-        padding: var(--space-3);
-    }
-    
-    .artifact-header {
-        padding: var(--space-3);
-        min-height: 44px;
-    }
-    
-    .artifact-title {
-        font-size: var(--font-size-sm);
-    }
-    
-    .artifact-btn {
-        padding: var(--space-2);
-        font-size: 8px;
-        min-width: 40px;
-    }
-    
-    .graph-display {
-        height: 280px !important;
-        min-height: 280px !important;
-    }
-    
-    .artifact-container.fullscreen .graph-display {
-        min-height: 300px !important;
-    }
-    
     .terminal-btn {
         padding: var(--space-2) var(--space-3);
         min-height: 36px;
-    }
-}
-
-@media (max-width: 480px) {
-    .range-inputs {
-        flex-direction: column;
-        gap: var(--space-1);
-    }
-    
-    .range-separator {
-        align-self: center;
-        margin: var(--space-1) 0;
-    }
-    
-    .graph-controls {
-        padding: var(--space-3);
-        gap: var(--space-2);
-    }
-    
-    .control-label {
-        font-size: 8px;
+        font-size: 10px;
     }
     
     .terminal-input {
         padding: var(--space-2);
         font-size: var(--font-size-xs);
     }
-    
+}
+
+@media (max-width: 480px) {
     .terminal-btn {
         padding: var(--space-2) var(--space-3);
         font-size: 8px;
         min-height: 32px;
     }
-    
-    .graph-display {
-        height: 240px !important;
-        min-height: 240px !important;
-    }
-    
-    .artifact-container.fullscreen .graph-display {
-        min-height: 250px !important;
-    }
-}
-
-/* Focus States - Improved Accessibility */
-.artifact-btn:focus,
-.terminal-btn:focus {
-    outline: var(--border-thick) solid var(--text-primary);
-    outline-offset: 2px;
-}
-
-.terminal-input:focus-visible {
-    outline: var(--border-thick) solid var(--text-primary);
-    outline-offset: calc(var(--border-thick) * -1);
 }
 
 /* High DPI Display Optimization */
 @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
-    .artifact-btn,
     .terminal-btn {
         border-width: 0.5px;
     }
     
-    .artifact-container {
-        border-left-width: 2px;
-    }
-    
-    .graph-display {
+    .terminal-input {
         border-width: 0.5px;
-    }
-}
-
-/* Print Styles */
-@media print {
-    .artifact-container {
-        break-inside: avoid;
-        border: 1px solid #333;
-        background: white;
-        margin: 10px 0;
-    }
-    
-    .artifact-header {
-        background: white;
-        color: black;
-        border-bottom: 1px solid #333;
-    }
-    
-    .artifact-actions {
-        display: none;
-    }
-    
-    .graph-controls {
-        display: none;
-    }
-    
-    .graph-display {
-        border: 1px solid #333;
-        background: white;
-        height: 300px;
-    }
-    
-    .artifact-title {
-        color: black;
     }
 }
 
 /* Reduced Motion Accessibility */
 @media (prefers-reduced-motion: reduce) {
-    .graph-loading .thinking-dots .dot {
-        animation: none;
-        opacity: 1;
-    }
-    
-    .artifact-btn:active,
     .terminal-btn:active {
         transform: none;
     }
     
-    .artifact-container {
+    .terminal-btn,
+    .terminal-input {
         transition: none;
     }
 }

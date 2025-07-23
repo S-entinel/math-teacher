@@ -648,38 +648,16 @@ mjx-math {
 }
 
 /* Components */
-.graph-container {
-    margin: var(--space-5) 0;
-    padding: var(--space-5);
-    border: var(--border-thick) solid var(--border);
-    background: var(--bg-primary);
-    position: relative;
-}
 
-.graph-container::before {
-    content: 'GRAPH';
-    position: absolute;
-    top: var(--space-1);
-    left: var(--space-2);
-    font-family: var(--font-mono);
-    font-size: var(--font-size-xs);
-    color: var(--text-primary);
-    font-weight: 700;
-    background: var(--bg-primary);
-    padding: 0 var(--space-1);
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.practice-container {
+/* .practice-container {
     margin: var(--space-5) 0;
     padding: var(--space-5);
     border: var(--border-thick) solid var(--border);
     background: var(--bg-secondary);
     position: relative;
-}
+} */
 
-.practice-container::before {
+/* .practice-container::before {
     content: 'PRACTICE';
     position: absolute;
     top: var(--space-1);
@@ -754,7 +732,7 @@ mjx-math {
 
 .practice-btn:active {
     transform: translate(1px, 1px);
-}
+} */
 
 /* Focus States */
 .action-btn:focus,
@@ -893,53 +871,6 @@ mjx-math {
     background: var(--bg-primary);
     color: var(--text-primary);
     border-style: dashed;
-}
-
-/* Artifact containers */
-.artifact-container {
-    margin: var(--space-6) 0;
-    border: var(--border-thick) solid var(--border);
-    background: var(--bg-primary);
-}
-
-.artifact-header {
-    padding: var(--space-4);
-    background: var(--bg-secondary);
-    border-bottom: var(--border-width) solid var(--border);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-}
-
-.artifact-title {
-    font-family: var(--font-mono);
-    font-size: var(--font-size-base);
-    color: var(--text-primary);
-}
-
-.artifact-content {
-    padding: var(--space-5);
-}
-
-.artifact-btn {
-    background: var(--bg-primary);
-    border: var(--border-width) solid var(--border);
-    color: var(--text-primary);
-    padding: var(--space-2) var(--space-3);
-    font-size: var(--font-size-xs);
-    font-family: var(--font-mono);
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    cursor: pointer;
-}
-
-.artifact-btn:hover {
-    background: var(--text-primary);
-    color: var(--bg-primary);
 }
 
 /* Utility classes */

@@ -201,7 +201,6 @@ class ChatSession(Base):
     # Relationships (unchanged)
     user = relationship("User", back_populates="chat_sessions")
     messages = relationship("Message", back_populates="chat_session", cascade="all, delete-orphan")
-    artifacts = relationship("Artifact", back_populates="chat_session", cascade="all, delete-orphan")
     
     # Indexes for performance (unchanged)
     __table_args__ = (
@@ -307,53 +306,6 @@ class Message(Base):
         }
     
 
-
-class Artifact(Base):
-
-    """Artifact model for graphs and interactive content"""
-    
-    __tablename__ = 'artifacts'
-    
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    artifact_id = Column(UUID, unique=True, nullable=False, default=lambda: str(uuid.uuid4()))
-    chat_session_id = Column(Integer, ForeignKey('chat_sessions.id'), nullable=False)
-    artifact_type = Column(String(50), nullable=False)  # 'graph', etc.
-    title = Column(String(500), nullable=False)
-    content = Column(JSON, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    status = Column(String(20), default='complete')  # 'pending', 'generating', 'complete', 'error'
-    error_message = Column(Text, nullable=True)
-    artifact_metadata = Column(JSON, default=dict)
-    
-    # Relationships
-    chat_session = relationship("ChatSession", back_populates="artifacts")
-    
-    # Indexes for performance (keeping existing)
-    __table_args__ = (
-        Index('idx_artifact_id', 'artifact_id'),
-        Index('idx_session_type', 'chat_session_id', 'artifact_type'),
-        Index('idx_created_at', 'created_at'),
-    )
-    
-    def __repr__(self):
-        return f"<Artifact(id={self.id}, type={self.artifact_type}, title={self.title})>"
-    
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'artifact_id': self.artifact_id,
-            'chat_session_id': self.chat_session_id,
-            'artifact_type': self.artifact_type,
-            'title': self.title,
-            'content': self.content,
-            'created_at': self.created_at.isoformat() if self.created_at else None,
-            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
-            'status': self.status,
-            'error_message': self.error_message,
-            'metadata': self.artifact_metadata or {}
-        }
-
 class UserPreference(Base):
     """User preferences model"""
     __tablename__ = 'user_preferences'
@@ -424,7 +376,6 @@ class DatabaseConfig:
                         preferences={
                             'theme': 'dark',
                             'auto_save_interval': 30,
-                            'default_graph_range': 10
                         }
                     )
                     session.add(default_user)

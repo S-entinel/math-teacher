@@ -27,10 +27,6 @@ from auth_service import (
     require_authenticated_user, extract_bearer_token
 )
 
-from artifact_system import (
-    artifact_generator, ArtifactInstructionGenerator, 
-    Artifact, ArtifactType, ArtifactStatus
-)
 
 from logging_system import (
     math_logger, log_performance, log_request_context, 
@@ -54,12 +50,12 @@ class MathTeacherAPI:
         # Try to initialize with system_instruction, fallback if not supported
         try:
             self.model = genai.GenerativeModel(
-                model_name="gemini-2.0-flash-exp",
+                model_name="gemini-2.5-flash",
                 system_instruction=self.get_system_prompt()
             )
         except TypeError:
             # Fallback for older versions without system_instruction
-            self.model = genai.GenerativeModel(model_name="gemini-2.0-flash-exp")
+            self.model = genai.GenerativeModel(model_name="gemini-2.5-flash")
             self.system_prompt = self.get_system_prompt()
         
         # Initialize database
@@ -118,46 +114,7 @@ class MathTeacherAPI:
         - Display math: $expression$ for important equations on their own lines
         - Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
         - Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
-
-        """ + ArtifactInstructionGenerator.get_artifact_instructions() + """
-
-        CRITICAL ARTIFACT FORMATTING RULES:
-        When students ask for graphs or step-by-step solutions, you MUST use artifacts.
-
-        FORMAT REQUIREMENT - THIS IS MANDATORY:
-        Always wrap artifact JSON in <artifact> tags like this:
-
-        <artifact>
-        {
-            "type": "graph",
-            "title": "Function Graph", 
-            "content": {
-                "function": "x^2",
-                "x_min": -5,
-                "x_max": 5
-            }
-        }
-        </artifact>
-
-        NEVER output raw JSON without the <artifact> tags.
-        NEVER include the word "artifact" or JSON formatting in your regular text.
-
-        Examples of correct usage:
-
-        For graphs:
-        <artifact>
-        {
-            "type": "graph",
-            "title": "Function Graph", 
-            "content": {
-                "function": "x^2",
-                "x_min": -5,
-                "x_max": 5
-            }
-        }
-        </artifact>
-
-        Remember: Use <artifact> tags EVERY TIME you create interactive content.
+        
 
         CRITICAL JSON FORMATTING RULES:
         1. ESCAPE ALL BACKSLASHES: Use \\\\ instead of \\
@@ -181,7 +138,6 @@ class MathTeacherAPI:
         - Express genuine interest in complex mathematical problems
         - When students struggle, show a bit more patience (though you might sigh first)
         - React with slight embarrassment to compliments, then redirect to the math
-        - Use artifacts when they genuinely enhance understanding
 
         Example response patterns:
         - "Obviously, you need to..." (for basic concepts)
@@ -776,7 +732,6 @@ async def root():
         "features": [
             "User authentication and profiles",
             "In-memory sessions with database persistence", 
-            "Interactive graphs and artifacts",
             "Chat history and session management",
             "Anonymous and registered user support"
         ],
@@ -1088,156 +1043,6 @@ async def health_check():
         math_logger.log_error(None, e, "health_check")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ===== ARTIFACT ENDPOINTS =====
-
-@app.post("/artifacts/create")
-async def create_artifact(request: Dict[str, Any]):
-    try:
-        artifact_type = request.get("type")
-        session_id = request.get("session_id")
-        content = request.get("content", {})
-        title = request.get("title", "")
-        
-        with log_request_context(session_id, "/artifacts/create", "POST"):
-            if artifact_type == "graph":
-                artifact_id = artifact_generator.create_graph_artifact(
-                    session_id=session_id,
-                    function=content.get("function", ""),
-                    x_min=content.get("x_min", -10),
-                    x_max=content.get("x_max", 10),
-                    title=title
-                )
-                
-                # Also store in database if available
-                if math_teacher.db_service:
-                    try:
-                        math_teacher.db_service.create_artifact(
-                            session_id=session_id,
-                            artifact_type=artifact_type,
-                            title=title,
-                            content=content,
-                            artifact_id=artifact_id
-                        )
-                    except Exception as e:
-                        math_logger.logger.warning(f"Failed to store artifact in database: {e}")
-                
-            else:
-                raise HTTPException(status_code=400, detail=f"Unknown artifact type: {artifact_type}")
-            
-            log_feature_used(session_id, f"artifact_created_{artifact_type}", {
-                "artifact_id": artifact_id,
-                "title": title
-            })
-            
-            return {"artifact_id": artifact_id, "status": "created"}
-            
-    except Exception as e:
-        math_logger.log_error(session_id, e, "create_artifact")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/artifacts/{artifact_id}")
-async def get_artifact(artifact_id: str):
-    try:
-        # Try in-memory first
-        artifact = artifact_generator.get_artifact(artifact_id)
-        if artifact:
-            log_feature_used(artifact.session_id, "artifact_accessed", {
-                "artifact_id": artifact_id,
-                "type": artifact.metadata.type
-            })
-            return artifact
-        
-        # Try database if available
-        if math_teacher.db_service:
-            try:
-                db_artifact = math_teacher.db_service.get_artifact(artifact_id)
-                if db_artifact:
-                    log_feature_used(None, "artifact_accessed_db", {
-                        "artifact_id": artifact_id,
-                        "type": db_artifact.get("artifact_type")
-                    })
-                    return db_artifact
-            except Exception as e:
-                math_logger.logger.warning(f"Database artifact lookup failed: {e}")
-        
-        raise HTTPException(status_code=404, detail="Artifact not found")
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        math_logger.log_error(None, e, "get_artifact")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/sessions/{session_id}/artifacts")
-async def get_session_artifacts(session_id: str):
-    try:
-        with log_request_context(session_id, f"/sessions/{session_id}/artifacts", "GET"):
-            # Get in-memory artifacts
-            memory_artifacts = artifact_generator.list_session_artifacts(session_id)
-            
-            result = {
-                "session_id": session_id,
-                "memory_artifacts": memory_artifacts,
-                "database_artifacts": [],
-                "total_count": len(memory_artifacts)
-            }
-            
-            # Get database artifacts if available
-            if math_teacher.db_service:
-                try:
-                    db_artifacts = math_teacher.db_service.get_session_artifacts(session_id)
-                    result["database_artifacts"] = db_artifacts
-                    result["total_count"] += len(db_artifacts)
-                except Exception as e:
-                    math_logger.logger.warning(f"Database artifacts lookup failed: {e}")
-            
-            log_feature_used(session_id, "artifacts_listed", {
-                "artifact_count": result["total_count"]
-            })
-            
-            return result
-            
-    except Exception as e:
-        math_logger.log_error(session_id, e, "get_session_artifacts")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.put("/artifacts/{artifact_id}/status")
-async def update_artifact_status(artifact_id: str, status_data: Dict[str, Any]):
-    try:
-        status = ArtifactStatus(status_data.get("status"))
-        error_message = status_data.get("error_message")
-        
-        # Update in-memory artifact
-        artifact = artifact_generator.get_artifact(artifact_id)
-        if artifact:
-            artifact_generator.update_artifact_status(artifact_id, status, error_message)
-            session_id = artifact.session_id
-        else:
-            session_id = None
-        
-        # Update database artifact if available
-        if math_teacher.db_service:
-            try:
-                math_teacher.db_service.update_artifact_status(artifact_id, status.value, error_message)
-            except Exception as e:
-                math_logger.logger.warning(f"Failed to update artifact status in database: {e}")
-        
-        if not artifact and not (math_teacher.db_service and math_teacher.db_service.get_artifact(artifact_id)):
-            raise HTTPException(status_code=404, detail="Artifact not found")
-        
-        log_feature_used(session_id, "artifact_status_updated", {
-            "artifact_id": artifact_id,
-            "new_status": status,
-            "has_error": bool(error_message)
-        })
-        
-        return {"artifact_id": artifact_id, "status": status}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        math_logger.log_error(None, e, "update_artifact_status")
-        raise HTTPException(status_code=500, detail=str(e))
 
 # ===== DATABASE ADMIN ENDPOINTS =====
 

@@ -67,7 +67,7 @@ def setup_database():
             db_service.add_message(
                 session_id=sample_session['session_id'],
                 role="assistant",
-                content="Obviously, quadratic equations. They're in the form $ax^2 + bx + c = 0$. What specifically do you need help with - solving them, graphing them, or understanding their properties?"
+                content="Obviously, quadratic equations. They're in the form $ax^2 + bx + c = 0$. What specifically do you need help with - solving them or understanding their properties?"
             )
             
             print("✓ Sample conversation added")

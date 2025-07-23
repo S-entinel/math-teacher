@@ -327,7 +327,7 @@ function initializeEnhancedHeaderButtons() {
                 
                 if (health && stats) {
                     const dbStatus = health.database === 'connected' ? '✅ Connected' : '❌ Disconnected';
-                    const message = `Database: ${dbStatus}\nSessions: ${stats.total_sessions}\nMessages: ${stats.total_messages}\nArtifacts: ${stats.total_artifacts}`;
+                    const message = `Database: ${dbStatus}\nSessions: ${stats.total_sessions}\nMessages: ${stats.total_messages}`;
                     
                     alert(message);
                 } else {
@@ -457,16 +457,7 @@ function handleEscapeKey() {
         return;
     }
     
-    // Exit fullscreen artifacts
-    const fullscreenArtifact = document.querySelector('.artifact-container.fullscreen');
-    if (fullscreenArtifact) {
-        const exitBtn = fullscreenArtifact.querySelector('.fullscreen-btn');
-        if (exitBtn) {
-            exitBtn.click();
-            return;
-        }
-    }
-    
+
     // Clear input if it has content
     const input = document.getElementById('message-input');
     if (input && input.value.trim()) {
@@ -523,10 +514,8 @@ function logAvailableFeatures() {
     console.log('  🎯 Smart Scrolling: Respects user scroll position');
     console.log('  💬 Input Hints: Shows keyboard shortcuts when typing');
     console.log('  🎨 Button Feedback: Visual feedback on all interactions');
-    console.log('  🌗 Dark Mode Graphs: Graphs adapt to current theme');
     console.log('  📱 Mobile Optimized: Touch-friendly symbols and templates');
     console.log('  🔧 Session Management: Robust session lifecycle with auto-recovery');
-    console.log('  📊 Interactive Graphs: Full-featured mathematical function plotting');
     
     console.log('\n⌨️  Keyboard Shortcuts:');
     console.log('  Ctrl/Cmd + K: Focus input field');
@@ -574,16 +563,6 @@ function logAvailableFeatures() {
     console.log('  • Session state is synchronized between frontend and backend');
     console.log('  • Auto-recovery from session desync issues');
     
-    console.log('\n📊 Graph Features:');
-    console.log('  • Interactive function plotting with Plotly.js');
-    console.log('  • Real-time function editing and updates');
-    console.log('  • Fullscreen mode with Escape key support');
-    console.log('  • Perfect fit within artifacts - no overlapping');
-    console.log('  • Responsive design for all screen sizes');
-    console.log('  • Terminal-style UI with monochrome theme');
-    console.log('  • Support for mathematical functions: sin, cos, tan, log, etc.');
-    console.log('  • Clean error handling with helpful messages');
-    
     console.log('\n💡 Tips:');
     console.log('  • Conversations automatically save every 30 seconds');
     console.log('  • Your work is preserved when you refresh the page');
@@ -592,16 +571,13 @@ function logAvailableFeatures() {
     console.log('  • Use templates to discover what the AI can help with');
     console.log('  • Symbol palette organizes math symbols by category');
     console.log('  • Dark theme preference is remembered between sessions');
-    console.log('  • Graphs automatically adapt to your current theme');
     console.log('  • Input hints appear when you focus the text field');
     console.log('  • Smart scrolling won\'t interrupt you when reading old messages');
     console.log('  • Session timer shows how long you\'ve been working');
     console.log('  • All buttons give visual feedback when clicked');
     console.log('  • Mobile users get larger touch targets for easier use');
     console.log('  • Sessions are bulletproof across browser differences');
-    console.log('  • Graph artifacts fit perfectly without formatting issues');
-    console.log('  • Use fullscreen mode for detailed graph analysis');
-    
+
     console.log('\n🔧 Developer Info:');
     console.log('  • Global access: window.mathInterface, window.conversationScrollManager');
     console.log('  • API endpoint: http://localhost:8000');
@@ -614,6 +590,4 @@ function logAvailableFeatures() {
     console.log('  • Performance: Smart scrolling and optimized rendering');
     console.log('  • Session lifecycle: Robust management with auto-recovery');
     console.log('  • Cross-browser compatibility: Works consistently in Chrome, Safari, Firefox');
-    console.log('  • Graph rendering: Plotly.js with custom terminal styling');
-    console.log('  • Artifact system: Clean, modular component architecture');
 }

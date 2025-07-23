@@ -210,6 +210,3 @@ data/large_datasets/
 sessions/
 session_data/
 
-# Temporary math rendering files
-temp_graphs/
-temp_plots/

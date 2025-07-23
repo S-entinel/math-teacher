@@ -241,7 +241,6 @@ class AuthService:
                     preferences={
                         'theme': 'dark',
                         'auto_save_interval': 30,
-                        'default_graph_range': 10
                     }
                 )
                 new_user.set_password(register_data.password)
