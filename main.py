@@ -115,8 +115,8 @@ class MathTeacherAPI:
         - Always format mathematical symbols, equations, derivatives, integrals, etc. in proper LaTeX
         - Examples: $f(x) = x^2$, $\frac{dy}{dx}$, $\int_{0}^{\infty} e^{-x} dx$, $\lim_{x \to 0} \frac{\sin x}{x} = 1$
         
-
         CRITICAL JSON FORMATTING RULES:
+        NEVER include JSON formatting in your regular text.
         1. ESCAPE ALL BACKSLASHES: Use \\\\ instead of \\
         2. ESCAPE ALL QUOTES: Use \\" instead of "
         3. NO UNESCAPED LaTeX: Convert \\frac{d}{dx} to \\\\frac{d}{dx}
@@ -237,6 +237,7 @@ class MathTeacherAPI:
             conversations[session_id]['last_active'] = datetime.now()
             
             # Ensure it also exists in database
+            print(user)
             if self.db_service and user:
                 try:
                     ensure_session_exists_in_db(session_id)
@@ -377,6 +378,7 @@ class MathTeacherAPI:
             
             raise HTTPException(status_code=500, detail=f"Error communicating with AI: {error_msg}")
         
+        
 
     def _store_ai_context(self, session_id: str, chat_session):
         """Store AI chat session context to database"""
@@ -384,10 +386,18 @@ class MathTeacherAPI:
             # Extract chat history from Gemini chat session
             chat_history = self._extract_chat_history(chat_session)
             
+            print(f"DEBUG: Storing AI context for session {session_id}")
+            print(f"DEBUG: Chat history length: {len(chat_history)}")
+            print(f"DEBUG: Has db_service: {bool(self.db_service)}")
+            
             if self.db_service and chat_history:
-                self.db_service.store_ai_context(session_id, chat_history)
+                result = self.db_service.store_ai_context(session_id, chat_history)
+                print(f"DEBUG: Store result: {result}")
+            else:
+                print(f"DEBUG: Not storing - db_service: {bool(self.db_service)}, chat_history: {len(chat_history) if chat_history else 0}")
                 
         except Exception as e:
+            print(f"DEBUG: Exception in _store_ai_context: {e}")
             math_logger.logger.warning(f"Failed to store AI context: {e}")
     
     def _extract_chat_history(self, chat_session) -> list:
@@ -576,7 +586,6 @@ async def logout_user(authorization: str = Header(None)):
     """Logout user (invalidate tokens)"""
     try:
         # For now, just return success since JWT tokens are stateless
-        # In production, you might want to maintain a blacklist
         return {"message": "Logout successful"}
     except Exception as e:
         math_logger.log_error(None, e, "logout_user")
